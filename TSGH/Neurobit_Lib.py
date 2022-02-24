@@ -178,7 +178,7 @@ def DrawEyePosition(frame, eyes, OD_p, OS_p):
 
 class Neurobit():
     def __init__(self):
-        self.version = '2.5'
+        self.version = '2.6'
         self.task = str("Subject")
         self.session = []
         self.save_path = os.getcwd()+"\\RESULT\\Version"+self.version
@@ -311,8 +311,9 @@ class Neurobit():
         OD = []; OS = []; thr_eyes = [] 
         frame_cnt = 0; OD_cal_cnt = 0; OS_cal_cnt = 0
         pbar = tqdm(total=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
+        cap = GetVideo(self.csv_path)
         while(cap.isOpened()):
-            cap = GetVideo(self.csv_path)
+            
             cap.set(1,frame_cnt)
             ret, frame = cap.read()
             if ret == True:
@@ -359,7 +360,7 @@ class Neurobit():
                 
             else:
                 break    
-            time.sleep(0.01)
+            time.sleep(0.0001)
             pbar.update(1)
         out.release()
         cv2.destroyAllWindows()

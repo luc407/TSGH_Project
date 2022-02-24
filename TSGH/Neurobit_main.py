@@ -21,7 +21,7 @@ Subject = Neurobit_Lib.Neurobit()
 if __name__== '__main__':
     main_path = "E:\\Result\\ALL"
     folderList = Subject.GetFolderPath(main_path)
-    for folder in folderList[163:]:
+    for folder in folderList:
         try: del Gaze9_Task
         except: pass
         try: del ACT_Task
@@ -68,13 +68,11 @@ if __name__== '__main__':
         try: Gaze9_Task; IsGaze9_Task = True
         except: print("No Gaze9_Task!!!")
         """Run Analysis"""
-# =============================================================================
-#         if IsACT_Task:
-#             ACT_Task.showVideo = False
-#             ACT_Task.MergeFile()
-#             ACT_Task.Exec()
-#             #ACT_Task.GetQuality()
-# =============================================================================
+        if IsACT_Task:
+            ACT_Task.showVideo = True
+            ACT_Task.MergeFile()
+            ACT_Task.Exec()
+            #ACT_Task.GetQuality()
         
         if IsCUT_Task:
             CUT_Task.showVideo = True
@@ -82,36 +80,29 @@ if __name__== '__main__':
             CUT_Task.Exec()
             #ACT_Task.GetQuality()
             
-# =============================================================================
-#         if IsGaze9_Task:
-#             Gaze9_Task.showVideo = False
-#             Gaze9_Task.MergeFile()
-#             try: Gaze9_Task.Exec(ACT_Task)   
-#             except: Gaze9_Task.Exec()
-# =============================================================================
+        if IsGaze9_Task:
+            Gaze9_Task.showVideo = True
+            Gaze9_Task.MergeFile()
+            try: Gaze9_Task.Exec(ACT_Task)   
+            except: Gaze9_Task.Exec()
         
             
         """Plot Report"""
         PDF_Header = main_head("Neurobit")
-# =============================================================================
-#         if IsACT_Task:
-#             Subject_Table = subject_table(ACT_Task)
-#             Clinic_Table = clinic_table(ACT_Task)
-#             pdf = CreatePDF(os.path.join(ACT_Task.saveReport_path, ACT_Task.FolderName+"_report.pdf"))
-#         elif IsGaze9_Task:
-#             Subject_Table = subject_table(Gaze9_Task)
-#             Clinic_Table = clinic_table(Gaze9_Task)
-#             pdf = CreatePDF(os.path.join(Gaze9_Task.saveReport_path, Gaze9_Task.FolderName+"_report.pdf"))
-# =============================================================================
+        if IsACT_Task:
+            Subject_Table = subject_table(ACT_Task)
+            Clinic_Table = clinic_table(ACT_Task)
+            pdf = CreatePDF(os.path.join(ACT_Task.saveReport_path, ACT_Task.FolderName+"_report.pdf"))
+        elif IsGaze9_Task:
+            Subject_Table = subject_table(Gaze9_Task)
+            Clinic_Table = clinic_table(Gaze9_Task)
+            pdf = CreatePDF(os.path.join(Gaze9_Task.saveReport_path, Gaze9_Task.FolderName+"_report.pdf"))
         if IsCUT_Task:
             Subject_Table = subject_table(CUT_Task)
             Clinic_Table = clinic_table(CUT_Task)
             pdf = CreatePDF(os.path.join(CUT_Task.saveReport_path, CUT_Task.FolderName+"_report.pdf"))
         
-# =============================================================================
-#         if IsACT_Task or IsGaze9_Task or IsCUT_Task:
-# =============================================================================
-        if IsCUT_Task:
+        if IsACT_Task or IsGaze9_Task or IsCUT_Task:
             Sub_Header = sub_head("Clinical relevant data")     
             
             Element = []
