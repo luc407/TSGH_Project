@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd 
 import qrcode
 import time
+import shutil
 from tqdm import tqdm
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
@@ -295,7 +296,7 @@ class Neurobit():
         ret, frame = cap.read()
         height = frame.shape[0]
         width = frame.shape[1]
-        if int(self.Date) < 20210801:
+        if int(self.Date) < 20210601:
             eyes_origin = [[int(width/4-125),int(height/4),275,300],
                            [int(width/2+75),int(height/4),275,300]]
         elif int(self.Date) < 20210901:
@@ -420,18 +421,18 @@ class Neurobit():
     def MergeFile(self):
         if len(self.session)>1:
             csv_1 = pd.read_csv(self.session[0], dtype=object)
-            clip_1 = self.session[0].replace(".csv",".mp4")
-            for i in range(1,len(self.session)):
+            videoList = []
+            videoList.append(VideoFileClip(self.session[0].replace(".csv",".mp4")))
+            for i in range(1,len(self.session)):                
                 csv_2 = pd.read_csv(self.session[i], dtype=object)
-                clip_2 = self.session[i].replace(".csv",".mp4")
-                tmp = int(np.where(csv_2.ExaminerID == "X")[0]+1)
+                tmp = int(np.where(csv_2.PatientID == "X")[0]+1)
                 csv_1 = csv_1.append(csv_2[tmp:], ignore_index=True)
-                video_1 = VideoFileClip(clip_1)
-                video_2 = VideoFileClip(clip_2)
-                final_video = concatenate_videoclips([video_1, video_2])
-                final_video.write_videofile(os.path.join(self.save_MainPath,self.FolderName + "_" + self.task + ".mp4"))
-                clip_1 = os.path.join(self.save_MainPath,self.FolderName + "_" + self.task + ".mp4")
-            csv_1.to_csv(os.path.join(self.save_MainPath,self.FolderName + "_" + self.task + ".csv"))
+                video = VideoFileClip(self.session[i].replace(".csv",".mp4"))
+                videoList.append(video)
+                          
+            final_video = concatenate_videoclips(videoList)
+            final_video.write_videofile(os.path.join(self.save_MainPath,self.FolderName + "_" + self.task + ".mp4"))  
+            csv_1.to_csv(os.path.join(self.save_MainPath,self.FolderName + "_" + self.task + ".csv"))        
             self.csv_path = os.path.join(self.save_MainPath,self.FolderName + "_" + self.task + ".csv")
         else:
             self.csv_path = self.session[0]
@@ -1147,9 +1148,11 @@ class Gaze9_Task(Neurobit):
         NeurobitDxDev_H = list();NeurobitDxDev_V = list()
         for i in range(0,len(GAZE_9_TIME)):
             temp = self.CmdTime[GAZE_9_TIME[i]]
-            delete = np.where(temp>len(OD[0])-1)[0]
-            if delete.any():
-                temp = np.delete(temp, delete)
+# =============================================================================
+#             delete = np.where(temp>len(OD[0])-1)[0]
+#             if delete.any():
+#                 temp = np.delete(temp, delete)
+# =============================================================================
             if type(self.CmdTime[GAZE_9_TIME[i]]) == list:
                 OD_ACT_tmp = []; OS_ACT_tmp = [];
                 for temp in self.CmdTime[GAZE_9_TIME[i]]:
