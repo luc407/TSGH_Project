@@ -218,7 +218,7 @@ class Neurobit():
             profile[i,6] = profile[i,6].replace("-","")[:8]
         self.Task = cmd_csv.Mode[0]
         self.Date = cmd_csv.Date[0].replace("/","")[:8]
-        self.ID = csv_path.split("\\")[-1].split('_')[-1].replace('.csv','')
+        self.ID = csv_path.split("\\")[-1].split('_')[1].replace('.csv','')
         self.Doctor = cmd_csv.Doctor[0]
         self.Device = cmd_csv.Device[0]
         tmp = int(np.where(cmd_csv.Doctor == "X")[0]+1)
@@ -262,17 +262,18 @@ class Neurobit():
                 self.HYPER = str(profile[ind,28])
                 self.HYPO = str(profile[ind,29])
                 self.pupil_OD = str(' ')
-                self.pupil_OS = str(' ')                
+                self.pupil_OS = str(' ')      
+                self.Profile_ind = ind
                 if not profile[ind,19] == 'nan':
                     try:
                         self.AL_OD = float(profile[ind,19])
                         self.AL_OS = float(profile[ind,20])
                     except:
-                        pass
-                self.Profile_ind = ind
+                        pass                
                 break                                
             else:                
                 self.Profile_ind = np.nan
+                
         if not np.isnan(self.Profile_ind):
             i = 0
             for head in header:
@@ -281,14 +282,11 @@ class Neurobit():
                 if self.task == "CUT": CUT_Save._Dx_true[head].append(profile[ind,i])
                 i += 1 
         else:
-# =============================================================================
-#             if (ACT_Save._Dx_true['ID'][-1] != profile[ind,2] or
-#                 ACT_Save._Dx_true['Exam Date'][-1] != profile[ind,6]):
-# =============================================================================
             i = 0
             for head in header:
                 if self.task == "ACT": ACT_Save._Dx_true[head].append(np.nan)
                 if self.task == "9_Gaze": Gaze9_Save._Dx_true[head].append(np.nan)
+                if self.task == "CUT": CUT_Save._Dx_true[head].append(np.nan)
                 i += 1 
         
     def GetEyePosition(self):        
@@ -386,7 +384,7 @@ class Neurobit():
         except:
             print("No _ACT_image_QT")
         try:
-            self.ACT_dx = ACT_Save._CUT_dx     
+            self.ACT_dx = ACT_Save._ACT_dx     
         except:
             print("No _ACT_dx")
     
@@ -406,7 +404,7 @@ class Neurobit():
         except:
             print("No CUT_ture")
         try:
-            self.CUT_dx = CUT_Save._Gaze9_dx     
+            self.CUT_dx = CUT_Save._CUT_dx     
         except:
             print("No _CUT_dx")
             
@@ -425,15 +423,19 @@ class Neurobit():
             videoList.append(VideoFileClip(self.session[0].replace(".csv",".mp4")))
             for i in range(1,len(self.session)):                
                 csv_2 = pd.read_csv(self.session[i], dtype=object)
-                tmp = int(np.where(csv_2.PatientID == "X")[0]+1)
+                tmp = int(np.where(csv_2.Doctor == "X")[0]+1)
                 csv_1 = csv_1.append(csv_2[tmp:], ignore_index=True)
                 video = VideoFileClip(self.session[i].replace(".csv",".mp4"))
                 videoList.append(video)
                           
             final_video = concatenate_videoclips(videoList)
-            final_video.write_videofile(os.path.join(self.save_MainPath,self.FolderName + "_" + self.task + ".mp4"))  
-            csv_1.to_csv(os.path.join(self.save_MainPath,self.FolderName + "_" + self.task + ".csv"))        
-            self.csv_path = os.path.join(self.save_MainPath,self.FolderName + "_" + self.task + ".csv")
+            try: final_video.write_videofile(os.path.join(self.save_MainPath,self.FolderName.replace(" ","_") + "_" + self.task + ".mp4"), threads = 6)  
+            except:
+                final_video = final_video.subclip(t_end=(final_video.duration - 1.0/final_video.fps))
+                final_video.write_videofile(os.path.join(self.save_MainPath,self.FolderName.replace(" ","_") + "_" + self.task + ".mp4"), threads = 6, logger=None)  
+
+            csv_1.to_csv(os.path.join(self.save_MainPath,self.FolderName.replace(" ","_") + "_" + self.task + ".csv"))        
+            self.csv_path = os.path.join(self.save_MainPath,self.FolderName.replace(" ","_") + "_" + self.task + ".csv")
         else:
             self.csv_path = self.session[0]
     def Save2Cloud(self):
@@ -579,28 +581,7 @@ class ACT_Task(Neurobit):
                         [np.nanpercentile(plateau_x, 50),     # x axis
                          np.nanpercentile(plateau_y, 50),     # y axis
                          np.nanpercentile(plateau_p, 50)],2)) # pupil size
-                    
-# =============================================================================
-#                     ODx_15th = np.nanpercentile(OD[0][temp],15)
-#                     ODx_50th = np.nanpercentile(OD[0][temp],50)
-#                     ODx_85th = np.nanpercentile(OD[0][temp],85)
-#                     ODy_15th = np.nanpercentile(OD[1][temp],15)
-#                     ODy_50th = np.nanpercentile(OD[1][temp],50)
-#                     ODy_85th = np.nanpercentile(OD[1][temp],85)
-#                     if (ODx_85th-ODx_50th>ODx_50th-ODx_15th):
-#                         thr_odx = 15
-#                     else:
-#                         thr_odx = 85
-#                     if (ODy_85th-ODy_50th>ODy_50th-ODy_15th):
-#                         thr_ody = 15
-#                     else:
-#                         thr_ody = 85
-#                     OD_ACT_tmp.append(np.round(
-#                         [np.nanpercentile(OD[0][temp], thr_odx),     # x axis
-#                          np.nanpercentile(OD[1][temp], thr_ody),     # y axis
-#                          np.nanpercentile(OD[2][temp], 50)],2)) # pupil size
-# =============================================================================
-                    
+                                        
                     diff_x = np.diff(OS[0][temp])
                     grad_x = np.sign(diff_x)
                     plateau_x = OS[0][temp][np.where(grad_x==0)[0]+1]
@@ -617,27 +598,7 @@ class ACT_Task(Neurobit):
                         [np.nanpercentile(plateau_x, 50),     # x axis
                          np.nanpercentile(plateau_y, 50),     # y axis
                          np.nanpercentile(plateau_p, 50)],2)) # pupil size
-                    
-# =============================================================================
-#                     OSx_15th = np.nanpercentile(OS[0][temp],15)
-#                     OSx_50th = np.nanpercentile(OS[0][temp],50)
-#                     OSx_85th = np.nanpercentile(OS[0][temp],85)
-#                     OSy_15th = np.nanpercentile(OS[1][temp],15)
-#                     OSy_50th = np.nanpercentile(OS[1][temp],50)
-#                     OSy_85th = np.nanpercentile(OS[1][temp],85)
-#                     if (OSx_85th-OSx_50th>OSx_50th-OSx_15th):
-#                         thr_osx = 15
-#                     else:
-#                         thr_osx = 85
-#                     if (OSy_85th-OSy_50th>OSy_50th-OSy_15th):
-#                         thr_osy = 15
-#                     else:
-#                         thr_osy = 85
-#                     OS_ACT_tmp.append(np.round(
-#                         [np.nanpercentile(OS[0][temp], thr_osx), 
-#                          np.nanpercentile(OS[1][temp], thr_osy),
-#                          np.nanpercentile(OS[2][temp], 50)],2))
-# =============================================================================
+
                 OD_ACT_tmp = np.array(OD_ACT_tmp)
                 OS_ACT_tmp = np.array(OS_ACT_tmp)
                 OD_ACT.append(np.round(
@@ -1148,11 +1109,9 @@ class Gaze9_Task(Neurobit):
         NeurobitDxDev_H = list();NeurobitDxDev_V = list()
         for i in range(0,len(GAZE_9_TIME)):
             temp = self.CmdTime[GAZE_9_TIME[i]]
-# =============================================================================
-#             delete = np.where(temp>len(OD[0])-1)[0]
-#             if delete.any():
-#                 temp = np.delete(temp, delete)
-# =============================================================================
+            delete = np.where(temp>len(OD[0])-1)[0]
+            if delete.any():
+                temp = np.delete(temp, delete)
             if type(self.CmdTime[GAZE_9_TIME[i]]) == list:
                 OD_ACT_tmp = []; OS_ACT_tmp = [];
                 for temp in self.CmdTime[GAZE_9_TIME[i]]:
@@ -1190,16 +1149,6 @@ class Gaze9_Task(Neurobit):
                          np.nanpercentile(plateau_y, 50),     # y axis
                          np.nanpercentile(plateau_p, 50)],2)) # pupil size
                     
-# =============================================================================
-#                     OD_ACT_tmp.append(np.round(
-#                         [np.nanpercentile(OD[0][temp], 50),     # x axis
-#                          np.nanpercentile(OD[1][temp], 50),     # y axis
-#                          np.nanpercentile(OD[2][temp], 50)],2)) # pupil size
-#                     OS_ACT_tmp.append(np.round(
-#                         [np.nanpercentile(OS[0][temp], 50), 
-#                          np.nanpercentile(OS[1][temp], 50),
-#                          np.nanpercentile(OS[2][temp], 50)],2))
-# =============================================================================
                 OD_ACT_tmp = np.array(OD_ACT_tmp)
                 OS_ACT_tmp = np.array(OS_ACT_tmp)
                 Gaze_9_OD.append(np.round(
@@ -1244,18 +1193,7 @@ class Gaze9_Task(Neurobit):
                     [np.nanpercentile(plateau_x, 50),     # x axis
                      np.nanpercentile(plateau_y, 50),     # y axis
                      np.nanpercentile(plateau_p, 50)],2)) # pupil size
-                
-# =============================================================================
-#                 Gaze_9_OD.append(np.round(
-#                     [np.nanpercentile(OD[0][temp], 50),     # x axis
-#                      np.nanpercentile(OD[1][temp], 50),     # y axis
-#                      np.nanpercentile(OD[2][temp], 50)],2)) # pupil size
-#                 Gaze_9_OS.append(np.round(
-#                     [np.nanpercentile(OS[0][temp], 50), 
-#                      np.nanpercentile(OS[1][temp], 50),
-#                      np.nanpercentile(OS[2][temp], 50)],2))
-# =============================================================================
-        
+                        
         self.Gaze_9_OD = np.array(Gaze_9_OD)
         self.Gaze_9_OS = np.array(Gaze_9_OS)
         
