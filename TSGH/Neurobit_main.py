@@ -33,6 +33,14 @@ if __name__== '__main__':
         IsACT_Task = False; IsGaze9_Task = False; IsCUT_Task = False;
         for csv_path in csv_files:
             Subject.GetProfile(csv_path)
+            cal_read_path = os.path.join(Subject.save_csv_path,csv_path.split("\\")[-2]+"//cal_param.txt")
+            f = open(cal_read_path)
+            text = f.readlines()            
+            Neurobit_Lib.OD_WTW = int(text[0].replace("\n",""))
+            Neurobit_Lib.OS_WTW = int(text[1].replace("\n",""))
+            Neurobit_Lib.EYES = [[int(text[2].replace("\n","").split(" ")[0])-120,int(text[2].replace("\n","").split(" ")[1])-75,250,150],
+                                 [int(text[3].replace("\n","").split(" ")[0])-130,int(text[3].replace("\n","").split(" ")[1])-75,250,150]]  
+            f.close
             print(Subject.Task)            
             if "9 Gaze" in Subject.Task:
                 try:
@@ -76,7 +84,7 @@ if __name__== '__main__':
             #ACT_Task.GetQuality()
         
         if IsCUT_Task:
-            CUT_Task.showVideo = True
+            CUT_Task.showVideo = False
             CUT_Task.MergeFile()
             CUT_Task.Exec()
             #ACT_Task.GetQuality()
@@ -111,20 +119,17 @@ if __name__== '__main__':
             Element.append(Subject_Table)
             Element.append(Sub_Header)
             Element.append(Clinic_Table)
-            try:
+            if IsACT_Task:
                 ACTReport(Element, ACT_Task)
-            except:
-                pass
+
             Element.append(PageBreak())
-            try:
+            if IsCUT_Task:
                 CUTReport(Element, CUT_Task)
-            except:
-                pass
-            Element.append(PageBreak())
-            try:
+                Element.append(PageBreak())
+
+            if IsGaze9_Task:
                 Gaze9Report(Element, Gaze9_Task)
-            except:
-                pass 
+
             pdf.build(Element)
             
             del pdf

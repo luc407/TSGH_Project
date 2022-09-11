@@ -13,6 +13,7 @@ import pandas as pd
 import qrcode
 import time
 import shutil
+from scipy import stats
 from tqdm import tqdm
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
@@ -20,6 +21,7 @@ from PIL import Image
 from matplotlib import pyplot as plt
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 from function_eye_capture import capture_eye_iris, capture_eye_pupil, get_eye_position
+from scipy.signal import find_peaks
 
 # google cloud function
 from google.cloud import storage
@@ -47,14 +49,35 @@ GAZE_9_STR      = ["Down",       "Front",    "Left",
                    "Right Down", "Right Up", "Up"]
 GAZE_9_EYEFIG = [8,5,6,9,3,4,7,1,2]
 
+global OD_WTW, OS_WTW, CAL_VAL_OD, CAL_VAL_OS, EYES
+OD_WTW = 0; 
+OS_WTW = 0;
+CAL_VAL_OD = 5/33;
+CAL_VAL_OS = 5/33;
+EYES = [[int(960/4-125),int(640/4),275,300],
+        [int(960/2+75),int(640/4),275,300]]
 def GetDxXls():
     dx_xls = pd.read_excel(os.path.join(os.getcwd(),'Neurobit database_20210523.xlsx'), dtype=object)
     header = dx_xls.columns.values        
     profile = dx_xls.to_numpy(dtype=str)
     return header, profile
 
-def enclosed_area(x_lower, y_lower, x_upper, y_upper):
-    return(np.trapz(y_upper, x=x_upper) - np.trapz(y_lower, x=x_lower))
+# =============================================================================
+# def enclosed_area(x_lower, y_lower, x_upper, y_upper):
+#     return(np.trapz(y_upper, x=x_upper) - np.trapz(y_lower, x=x_lower))
+# =============================================================================
+def enclosed_area(xy):
+    """ 
+        Calculates polygon area.
+        x = xy[:,0], y = xy[:,1]
+    """
+    l = len(xy)
+    s = 0.0
+    # Python arrys are zer0-based
+    for i in range(l):
+        j = (i+1)%l  # keep index in [0,l)
+        s += (xy[j,0] - xy[i,0])*(xy[j,1] + xy[i,1])
+    return -0.5*s
     
 class ACT_Save(object):
     _ACT_image_QT = {
@@ -121,9 +144,9 @@ class Gaze9_Save(object):
     for i in header:
         _Dx_true[i]=[]
     
-def trans_PD(AL,dx):
+def trans_PD(AL,dx,CAL_VAL):
     theta = []
-    dx = np.array(dx)
+    dx = np.array(dx, dtype=float)
     for i in range(0,dx.size):
         try:
             math.asin((2*abs(dx[i])/AL)*(5/33))
@@ -131,24 +154,31 @@ def trans_PD(AL,dx):
             dx[i] = np.nan
         if dx[i]<0:
             dx[i] = -dx[i]
-            theta = np.append(theta, - 100*math.tan(math.asin((2*dx[i]/AL)*(5/33))))
+            theta = np.append(theta, - 100*math.tan(math.asin((2*dx[i]/AL)*CAL_VAL)))
         else:
-            theta = np.append(theta, 100*math.tan(math.asin((2*dx[i]/AL)*(5/33))))
+            theta = np.append(theta, 100*math.tan(math.asin((2*dx[i]/AL)*CAL_VAL)))
     return np.round(theta,1)
 
-def trans_AG(AL,dx):
+def trans_AG(AL,dx,CAL_VAL):
     theta = []
-    dx = np.array(dx)
+    dx = np.array(dx, dtype=float)
     for i in range(0,dx.size):
         try:
-            math.asin((2*abs(dx[i])/AL)*(5/33))
+            Th = math.degrees(math.asin((2*abs(dx[i])/AL)*CAL_VAL))
         except:
-            dx[i] = np.nan
+            try:
+                Th = 90+math.degrees(
+                    math.asin(
+                        (2*(abs(dx[i])-(AL*330)/(2*50))/AL)*CAL_VAL
+                        )
+                    )
+            except:
+                Th = np.nan
         if dx[i]<0:
             dx[i] = -dx[i]
-            theta = np.append(theta, - math.degrees(math.asin((2*dx[i]/AL)*(5/33))))
+            theta = np.append(theta, - Th)
         else:
-            theta = np.append(theta, math.degrees(math.asin((2*dx[i]/AL)*(5/33))))
+            theta = np.append(theta, Th)
     return np.round(theta,1)
 
 def GetVideo(csv_path):
@@ -179,10 +209,13 @@ def DrawEyePosition(frame, eyes, OD_p, OS_p):
 
 class Neurobit():
     def __init__(self):
-        self.version = '2.6'
+        self.version = '2.8'
+        self.version_csv = '2.8'
         self.task = str("Subject")
         self.session = []
+        self.major_path = os.getcwd()
         self.save_path = os.getcwd()+"\\RESULT\\Version"+self.version
+        self.save_csv_path = os.getcwd()+"\\RESULT\\Version"+self.version_csv
         self.saveVideo_path = []
         self.CmdTime = []
         self.showVideo = True
@@ -212,6 +245,8 @@ class Neurobit():
         profile = dx_xls.to_numpy(dtype=str)
         return header, profile
     def GetProfile(self,csv_path):
+        global CAL_VAL_OD, CAL_VAL_OS
+        
         cmd_csv = pd.read_csv(csv_path, dtype=object)
         header, profile = self.GetDxXls()
         for i in range(0,len(profile)):
@@ -251,8 +286,10 @@ class Neurobit():
                 self.Ref_OD = str(profile[ind,14])
                 self.Ref_OS = str(profile[ind,15])
                 self.Stereo = str(profile[ind,16])
-                self.WTW_OD = str(profile[ind,17])
-                self.WTW_OS = str(profile[ind,18])
+                try: self.WTW_OD = float(profile[ind,17])
+                except: self.WTW_OD = np.nan
+                try: self.WTW_OS = float(profile[ind,18])
+                except: self.WTW_OS = np.nan
                 self.PD = str(profile[ind,21])
                 self.Hertal_OD = str(profile[ind,22])
                 self.Hertal_OS = str(profile[ind,23])
@@ -270,7 +307,13 @@ class Neurobit():
                         self.AL_OS = float(profile[ind,20])
                     except:
                         pass                
-                break                                
+                break          
+                
+                if not self.WTW_OD == 'nan':
+                    CAL_VAL_OD = self.WTW_OD/OD_WTW      
+                
+                if not self.WTW_OS == 'nan':
+                    CAL_VAL_OS = self.WTW_OS/OS_WTW
             else:                
                 self.Profile_ind = np.nan
                 
@@ -294,19 +337,23 @@ class Neurobit():
         ret, frame = cap.read()
         height = frame.shape[0]
         width = frame.shape[1]
-        if int(self.Date) < 20210601:
-            eyes_origin = [[int(width/4-125),int(height/4),275,300],
-                           [int(width/2+75),int(height/4),275,300]]
-        elif int(self.Date) < 20210901:
-            eyes_origin = [[int(width/4-125),int(height/2)-100,275,200],
-                           [int(width/2+75),int(height/2)-100,275,200]]
-        else:
-            eyes_origin = [[int(width/4-200),int(height/2)-100,375,200],
-                           [int(width/2+75),int(height/2)-100,375,200]]
+# =============================================================================
+#         if int(self.Date) < 20210601:
+#             eyes_origin = [[int(width/4-125),int(height/4),275,300],
+#                            [int(width/2+75),int(height/4),275,300]]
+#         elif int(self.Date) < 20210901:
+#             eyes_origin = [[int(width/4-125),int(height/2)-100,275,200],
+#                            [int(width/2+75),int(height/2)-100,275,200]]
+#         else:
+#             eyes_origin = [[int(width/4-200),int(height/2)-100,375,200],
+#                            [int(width/2+75),int(height/2)-100,375,200]]
+# =============================================================================
         fourcc = cv2.VideoWriter_fourcc(*'MP42')
         out = cv2.VideoWriter(os.path.join(self.saveVideo_path,self.FileName+'.avi'),
                               fourcc, 25, (width,height))
-        eyes, OD_pre, OS_pre = get_eye_position(GetVideo(self.csv_path),eyes_origin)
+# =============================================================================
+#         EYES, OD_pre, OS_pre = get_eye_position(GetVideo(self.csv_path),eyes_origin)
+# =============================================================================
         OD = []; OS = []; thr_eyes = [] 
         frame_cnt = 0; OD_cal_cnt = 0; OS_cal_cnt = 0
         pbar = tqdm(total=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
@@ -317,28 +364,26 @@ class Neurobit():
             ret, frame = cap.read()
             if ret == True:
                 frame_cnt+=1                                
-                OD_p,OS_p,thr = capture_eye_pupil(frame,eyes)
-                #print(OD_p)
-                #print(OS_p)
+                OD_p,OS_p,thr = capture_eye_pupil(frame,EYES)
                 thr_eyes.append(thr)
                 if (not np.isnan(OD_p).any() and 
-                    eyes_origin[0][0]<OD_p[0]<eyes_origin[0][0]+eyes_origin[0][2] and 
-                    eyes_origin[0][1]<OD_p[1]<eyes_origin[0][1]+eyes_origin[0][3]):
+                    EYES[0][0]<OD_p[0]<EYES[0][0]+EYES[0][2] and 
+                    EYES[0][1]<OD_p[1]<EYES[0][1]+EYES[0][3]):
                     OD.append([int(OD_p[0]),int(OD_p[1]), int(OD_p[2])])
                 else:
                     OD.append([np.nan,np.nan,np.nan])
                     print("An OD exception occurred")
                 if (not np.isnan(OS_p).any() and 
-                    eyes_origin[1][0]<OS_p[0]<eyes_origin[1][0]+eyes_origin[1][2] and 
-                    eyes_origin[1][1]<OS_p[1]<eyes_origin[1][1]+eyes_origin[1][3]):
+                    EYES[1][0]<OS_p[0]<EYES[1][0]+EYES[1][2] and 
+                    EYES[1][1]<OS_p[1]<EYES[1][1]+EYES[1][3]):
                     OS.append([int(OS_p[0]), int(OS_p[1]), int(OS_p[2])])
                 else:
                     OS.append([np.nan,np.nan,np.nan])
                     print("An OS exception occurred")
-                DrawEyePosition(frame, eyes, OD[-1], OS[-1])
+                DrawEyePosition(frame, EYES, OD[-1], OS[-1])
                 self.DrawTextVideo(frame, out, frame_cnt)
                 
-                for (ex,ey,ew,eh) in eyes_origin:    
+                for (ex,ey,ew,eh) in EYES:    
                     cv2.rectangle(frame,(ex,ey),(ex+ew,ey+eh),(255,0,0),2)
                     
                 out.write(frame)
@@ -347,15 +392,17 @@ class Neurobit():
                     cv2.imshow('frame',frame) 
                     cv2.waitKey(1) 
                 
-                dOD = np.sum(np.abs(np.array(OD[-1])-OD_pre))
-                dOS = np.sum(np.abs(np.array(OS[-1])-OS_pre))
-                if np.logical_or(dOD>60, np.isnan(dOD)) and OD_cal_cnt <= 0:
-                    OD_cal_cnt = 60
-                    eyes, OD_pre, OS_pre = get_eye_position(cap,eyes_origin)    
-                elif np.logical_or(dOS>60, np.isnan(dOS)) and OD_cal_cnt <= 0 and OS_cal_cnt <= 0:
-                    OS_cal_cnt = 60
-                    eyes, OD_pre, OS_pre = get_eye_position(cap,eyes_origin) 
-                OD_cal_cnt-=1; OS_cal_cnt-=1
+# =============================================================================
+#                 dOD = np.sum(np.abs(np.array(OD[-1])-OD_pre))
+#                 dOS = np.sum(np.abs(np.array(OS[-1])-OS_pre))
+#                 if np.logical_or(dOD>60, np.isnan(dOD)) and OD_cal_cnt <= 0:
+#                     OD_cal_cnt = 60
+#                     eyes, OD_pre, OS_pre = get_eye_position(cap,eyes_origin)    
+#                 elif np.logical_or(dOS>60, np.isnan(dOS)) and OD_cal_cnt <= 0 and OS_cal_cnt <= 0:
+#                     OS_cal_cnt = 60
+#                     eyes, OD_pre, OS_pre = get_eye_position(cap,eyes_origin) 
+#                 OD_cal_cnt-=1; OS_cal_cnt-=1
+# =============================================================================
                 
             else:
                 break    
@@ -420,12 +467,14 @@ class Neurobit():
         if len(self.session)>1:
             csv_1 = pd.read_csv(self.session[0], dtype=object)
             videoList = []
-            videoList.append(VideoFileClip(self.session[0].replace(".csv",".mp4")))
+            try: videoList.append(VideoFileClip(self.session[0].replace(".csv",".mp4")))
+            except: videoList.append(VideoFileClip(self.session[0].replace(".csv",".avi")))
             for i in range(1,len(self.session)):                
                 csv_2 = pd.read_csv(self.session[i], dtype=object)
                 tmp = int(np.where(csv_2.Doctor == "X")[0]+1)
                 csv_1 = csv_1.append(csv_2[tmp:], ignore_index=True)
-                video = VideoFileClip(self.session[i].replace(".csv",".mp4"))
+                try: video = VideoFileClip(self.session[i].replace(".csv",".mp4"))
+                except: video = VideoFileClip(self.session[i].replace(".csv",".avi"))
                 videoList.append(video)
                           
             final_video = concatenate_videoclips(videoList)
@@ -442,29 +491,58 @@ class Neurobit():
         gauth = GoogleAuth()       
         drive = GoogleDrive(gauth) 
         upload_file = self.FileName+".avi"
-       	gfile = drive.CreateFile({'parents': [{'id': '1Sp9f9izaf5580iVP3Sk-jTuy3a84-u0m'}]})
+       	gfile = drive.CreateFile({'parents': [{'id': '1YW6-K47blijBFnBaWHWOK90jdN5Bi3fe'}]})
+        # delete exist file
+        file_list = drive.ListFile({'q': "'{}' in parents and trashed=false".format('1YW6-K47blijBFnBaWHWOK90jdN5Bi3fe')}).GetList()
+        for file in file_list:
+            if file['title'] == self.FileName+".avi":
+                drive.CreateFile({'id': file['id']}).Trash()
        	# Read file and set it as the content of this instance.
         os.chdir(self.saveVideo_path)
        	gfile.SetContentFile(upload_file)
-        os.chdir('E:\Peggy_analysis')
-       	gfile.Upload() # Upload the file. 
+        os.chdir(self.major_path)
+       	gfile.Upload() # Upload the file.
         # Check update or not
         NotUpdated = True
         while NotUpdated:
-            file_list = drive.ListFile({'q': "'{}' in parents and trashed=false".format('1Sp9f9izaf5580iVP3Sk-jTuy3a84-u0m')}).GetList()
+            file_list = drive.ListFile({'q': "'{}' in parents and trashed=false".format('1YW6-K47blijBFnBaWHWOK90jdN5Bi3fe')}).GetList()
             for file in file_list:
                 if file['title'] == self.FileName+".avi":
                     NotUpdated = False        
     def DrawQRCode(self):
+        os.chdir(self.major_path)
         gauth = GoogleAuth()       
         drive = GoogleDrive(gauth) 
        	# Read file and set it as the content of this instance.
-        file_list = drive.ListFile({'q': "'{}' in parents and trashed=false".format('1Sp9f9izaf5580iVP3Sk-jTuy3a84-u0m')}).GetList()
+        file_list = drive.ListFile({'q': "'{}' in parents and trashed=false".format('1YW6-K47blijBFnBaWHWOK90jdN5Bi3fe')}).GetList()
         for file in file_list:
             if file['title'] == self.FileName+".avi":
                 self.website =file['alternateLink']
         img = qrcode.make(self.website)
         img.save(os.path.join(self.saveImage_path,"QR_code.png"))
+    def Preprocessing(self):
+        plt.subplot(2,2,1)        
+        plt.plot(self.OD[0,:])
+        plt.plot(self.OD[1,:])
+        plt.subplot(2,2,2)
+        plt.plot(self.OS[0,:])
+        plt.plot(self.OS[1,:])
+        plt.show()
+        win = 15      
+        low = np.nanpercentile(self.OD,30,axis=1)
+        rm = np.logical_or(abs(self.OD[0,:]-low[0]) > 80, abs(self.OD[1,:]-low[1]) > 80)
+        self.OD[:,rm] = np.full([3,len(self.OD[0,rm])],np.nan)
+        
+        low = np.nanpercentile(self.OS,30,axis=1)
+        rm = np.logical_or(abs(self.OS[0,:]-low[0]) > 80, abs(self.OS[1,:]-low[1]) > 80)
+        self.OS[:,rm] = np.full([3,len(self.OS[0,rm])],np.nan)
+        
+        OD_temp = self.OD; OS_temp = self.OS;
+        for i in range(win,(len(self.OD[0,:])-win)):
+            if not np.isnan(self.OD[0,i]): OD_temp[:,i] = np.nanmedian(self.OD[:,i-win:i+win],axis = 1)
+            if not np.isnan(self.OS[0,i]): OS_temp[:,i] = np.nanmedian(self.OS[:,i-win:i+win],axis = 1)
+        self.OD = OD_temp
+        self.OS = OS_temp
         
 
 def GetMiddleLight(csv_path):
@@ -525,7 +603,9 @@ class ACT_Task(Neurobit):
     def Exec(self):
         self.GetCommand()        
         self.GetEyePosition()  
-        self.SeperateSession()              
+# =============================================================================
+#         self.SeperateSession()              
+# =============================================================================
         self.FeatureExtraction()  
         self.GetDiagnosis()  
         self.Save2Cloud()
@@ -543,131 +623,216 @@ class ACT_Task(Neurobit):
         else:
             self.GetActTimeFromCmd()
             self.IsVoiceCommand = True
-    def FeatureExtraction(self):
-        OD = self.OD.astype('float'); OS = self.OS.astype('float')
-        OD_mean = np.nanmean(OD[0,:]); OD_std = np.nanstd(OD[0,:])
-        OS_mean = np.nanmean(OS[0,:]); OS_std = np.nanstd(OS[0,:])
-        delet_OD = np.logical_and(OD[0,:]>OD_mean+OD_std*2, OD[0,:]>OD_mean-OD_std*2)
-        delet_OS = np.logical_and(OS[0,:]>OS_mean+OS_std*2, OS[0,:]>OS_mean-OS_std*2)
-        if delet_OD.any():
-            OD[:,delet_OD] = np.nan
-        if delet_OS.any():
-            OS[:,delet_OS] = np.nan
-        OD_ACT = []; OS_ACT = [];       # all position in each ACT_TIME
+    def NoVoiceCommandFeatureExtraction(self):
+        OD = np.round(self.OD,0); OS = np.round(self.OS,0)
+        OD_ACT = []; OS_ACT = [];       # all position in each ACT_TIME  
+        tmp = np.concatenate([np.array(self.CmdTime[ACT_TIME[1]]),
+                        np.array(self.CmdTime[ACT_TIME[2]])])
+
+        up_OD = np.nanpercentile(OD[:,tmp],80, axis =1)
+        low_OD = np.nanpercentile(OD[:,tmp],20, axis =1)
+        
+        up_OS = np.nanpercentile(OS[:,tmp],80, axis =1)
+        low_OS = np.nanpercentile(OS[:,tmp],20, axis =1)
+        
         for i in range(0,len(ACT_TIME)):
             temp = self.CmdTime[ACT_TIME[i]]
-# =============================================================================
-#             delete = np.where(temp>len(OD[0])-1)[0]
-#             if delete.any():
-#                 temp = np.delete(temp, delete)
-# =============================================================================
-            if type(self.CmdTime[ACT_TIME[i]]) == list:
-                OD_ACT_tmp = []; OS_ACT_tmp = [];
-                thr_odx = 50; thr_ody = 50; thr_osx = 50; thr_osy = 50
-                for temp in self.CmdTime[ACT_TIME[i]]:
-                    diff_x = np.diff(OD[0][temp])
-                    grad_x = np.sign(diff_x)
-                    plateau_x = OD[0][temp][np.where(grad_x==0)[0]+1]
-                    
-                    diff_y = np.diff(OD[1][temp])
-                    grad_y = np.sign(diff_y)
-                    plateau_y = OD[1][temp][np.where(grad_y==0)[0]+1]
-                    
-                    diff_p = np.diff(OD[2][temp])
-                    grad_p = np.sign(diff_p)
-                    plateau_p = OD[2][temp][np.where(grad_p==0)[0]+1]
-                    
-                    OD_ACT_tmp.append(np.round(
-                        [np.nanpercentile(plateau_x, 50),     # x axis
-                         np.nanpercentile(plateau_y, 50),     # y axis
-                         np.nanpercentile(plateau_p, 50)],2)) # pupil size
-                                        
-                    diff_x = np.diff(OS[0][temp])
-                    grad_x = np.sign(diff_x)
-                    plateau_x = OS[0][temp][np.where(grad_x==0)[0]+1]
-                    
-                    diff_y = np.diff(OS[1][temp])
-                    grad_y = np.sign(diff_y)
-                    plateau_y = OS[1][temp][np.where(grad_y==0)[0]+1]
-                    
-                    diff_p = np.diff(OS[2][temp])
-                    grad_p = np.sign(diff_p)
-                    plateau_p = OS[2][temp][np.where(grad_p==0)[0]+1]
-                    
-                    OS_ACT_tmp.append(np.round(
-                        [np.nanpercentile(plateau_x, 50),     # x axis
-                         np.nanpercentile(plateau_y, 50),     # y axis
-                         np.nanpercentile(plateau_p, 50)],2)) # pupil size
-
-                OD_ACT_tmp = np.array(OD_ACT_tmp)
-                OS_ACT_tmp = np.array(OS_ACT_tmp)
-                OD_ACT.append(np.round(
-                    [np.nanpercentile(OD_ACT_tmp[:,0], 50),     # x axis
-                     np.nanpercentile(OD_ACT_tmp[:,1], 50),     # y axis
-                     np.nanpercentile(OD_ACT_tmp[:,2], 50)],2))
-                OS_ACT.append(np.round(
-                    [np.nanpercentile(OS_ACT_tmp[:,0], 50),     # x axis
-                     np.nanpercentile(OS_ACT_tmp[:,1], 50),     # y axis
-                     np.nanpercentile(OS_ACT_tmp[:,2], 50)],2))
+            if temp.any():                
+                OD_ACT.append(stats.mode(OD[:,temp],axis = 1)[0].reshape(-1))
+                OS_ACT.append(stats.mode(OS[:,temp],axis = 1)[0].reshape(-1))
             else:
-                diff_x = np.diff(OD[0][temp])
-                grad_x = np.sign(diff_x)
-                plateau_x = OD[0][temp][np.where(grad_x==0)[0]+1]
-                
-                diff_y = np.diff(OD[1][temp])
-                grad_y = np.sign(diff_y)
-                plateau_y = OD[1][temp][np.where(grad_y==0)[0]+1]
-                
-                diff_p = np.diff(OD[2][temp])
-                grad_p = np.sign(diff_p)
-                plateau_p = OD[2][temp][np.where(grad_p==0)[0]+1]
-                
-                OD_ACT.append(np.round(
-                    [np.nanpercentile(plateau_x, 50),     # x axis
-                     np.nanpercentile(plateau_y, 50),     # y axis
-                     np.nanpercentile(plateau_p, 50)],2)) # pupil size
-                diff_x = np.diff(OS[0][temp])
-                grad_x = np.sign(diff_x)
-                plateau_x = OS[0][temp][np.where(grad_x==0)[0]+1]
-                
-                diff_y = np.diff(OS[1][temp])
-                grad_y = np.sign(diff_y)
-                plateau_y = OS[1][temp][np.where(grad_y==0)[0]+1]
-                
-                diff_p = np.diff(OS[2][temp])
-                grad_p = np.sign(diff_p)
-                plateau_p = OS[2][temp][np.where(grad_p==0)[0]+1]
-                
-                OS_ACT.append(np.round(
-                    [np.nanpercentile(plateau_x, 50),     # x axis
-                     np.nanpercentile(plateau_y, 50),     # y axis
-                     np.nanpercentile(plateau_p, 50)],2)) # pupil size
-# =============================================================================
-#                 OD_ACT.append(np.round(
-#                     [np.nanpercentile(OD[0][temp], 50),     # x axis
-#                      np.nanpercentile(OD[1][temp], 50),     # y axis
-#                      np.nanpercentile(OD[2][temp], 50)],2)) # pupil size
-#                 OS_ACT.append(np.round(
-#                     [np.nanpercentile(OS[0][temp], 50), 
-#                      np.nanpercentile(OS[1][temp], 50),
-#                      np.nanpercentile(OS[2][temp], 50)],2))
-# =============================================================================
+                OD_ACT.append([np.nan, np.nan, np.nan])
+                OS_ACT.append([np.nan, np.nan, np.nan])
+        
+        CL = OD_ACT[1][:2]; CR = OD_ACT[2][:2]
+        if (np.nansum(abs(CL-CR))>6):
+            if sum(abs(CL-up_OD[:2])) < sum(abs(CR-up_OD[:2])):
+                OD_ACT[1] = up_OD; OD_ACT[2] = low_OD
+            else:
+                OD_ACT[2] = up_OD; OD_ACT[1] = low_OD
+            
+        CL = OS_ACT[1][:2]; CR = OS_ACT[2][:2]    
+        if (np.nansum(abs(CL-CR))>6):
+            if sum(abs(CL-up_OS[:2])) < sum(abs(CR-up_OS[:2])):
+                OS_ACT[1] = up_OS; OS_ACT[2] = low_OS
+            else:
+                OS_ACT[2] = up_OS; OS_ACT[1] = low_OS
         
         # ET、XT angle
-        OD_ACT = np.array(OD_ACT)
-        OS_ACT = np.array(OS_ACT)
-        self.OD_ACT = OD_ACT
-        self.OS_ACT = OS_ACT
+        self.OD_ACT = np.array(np.round(OD_ACT,2))
+        self.OS_ACT = np.array(np.round(OS_ACT,2))
+        
         # Fixation_eye - Covered_eye
-        OD_fix = OD_ACT[1]-OD_ACT[2]    # CL-CR
-        OS_fix = OS_ACT[2]-OS_ACT[1]    # CR-CL
+        OD_fix = self.OD_ACT[1]-self.OD_ACT[2]    # CL-CR
+        OS_fix = self.OS_ACT[2]-self.OS_ACT[1]    # CR-CL
+        
         try:
-            OD_fix = np.append(trans_PD(self.AL_OD,OD_fix[0:2]), OD_fix[2])
-            OS_fix = np.append(trans_PD(self.AL_OS,OS_fix[0:2]), OS_fix[2])
+            OD_fix = np.append(trans_PD(self.AL_OD,OD_fix[0:2],CAL_VAL_OD), OD_fix[2])
+            OS_fix = np.append(trans_PD(self.AL_OS,OS_fix[0:2],CAL_VAL_OS), OS_fix[2])
         except:
             print("No profile")
+            
         self.OD_fix = OD_fix        # one position in each ACT_TIME
-        self.OS_fix = OS_fix
+        self.OS_fix = OS_fix        
+    def VoiceCommandFeatureExtraction(self):
+        OD = np.round(self.OD,0); OS = np.round(self.OS,0)
+        OD_ACT = []; OS_ACT = [];       # all position in each ACT_TIME  
+        OD_ACT_CL = []; OS_ACT_CL = [];
+        OD_ACT_CR = []; OS_ACT_CR = [];
+        i = 0; rd = 0; rd_ucr = 0; duration = 5*24
+        while(i < len(OD[0,:])):
+            if i in self.CmdTime['O_t']:
+                tmp = self.CmdTime['O_t']
+                trg_ind = np.where(np.diff(tmp) > 5)[0]
+                if rd > 0 and rd < len(trg_ind): 
+                    i = tmp[trg_ind[rd]]+1;        rd += 1
+                    print(i)
+                    continue
+                elif rd > 0:
+                    i = self.CmdTime['O_t'][-1]+1;   rd += 1
+                    print(i)
+                    continue
+                OD_ACT.append(stats.mode(OD[:,tmp],axis = 1)[0].reshape(-1))
+                OS_ACT.append(stats.mode(OS[:,tmp],axis = 1)[0].reshape(-1))
+                
+                i = self.CmdTime['CL_t'][0]            
+                rd += 1
+                print("O_t",i)
+            elif i in self.CmdTime['CL_t'] or i in self.CmdTime['CR_t']:   
+                
+                if i in self.CmdTime['CL_t']: tmp = self.CmdTime['CL_t'];print("CL_t")                  
+                else: tmp = self.CmdTime['CR_t'];print("CR_t")  
+                trg_ind = np.where(np.diff(tmp) > 5)[0]                
+                start_ind = np.where(tmp == i)[0][0]
+                end_ind = trg_ind[np.where(trg_ind>start_ind)[0]]
+                
+                if end_ind.any(): end_ind = end_ind[0]
+                else: end_ind = len(tmp)-1
+                
+                latency = np.nanmean(OD[:2,tmp[start_ind:start_ind+10]],axis = 1).reshape(2,-1)
+                slope = np.nansum(abs(OD[:2,tmp[start_ind:end_ind]]-latency),axis=0)
+                trg_ind = np.where(slope>2.5)[0]
+                if trg_ind.any(): 
+                    trg_ind = tmp[start_ind] + trg_ind[0]
+                    if i in self.CmdTime['CL_t']: 
+                        OD_ACT_CL.append(stats.mode(OD[:,trg_ind:trg_ind+duration],axis = 1)[0].reshape(-1))
+                    else: 
+                        OD_ACT_CR.append(stats.mode(OD[:,trg_ind:trg_ind+duration],axis = 1)[0].reshape(-1))
+                else:
+                    if i in self.CmdTime['CL_t']: 
+                        OD_ACT_CL.append(stats.mode(OD[:,tmp],axis = 1)[0].reshape(-1))
+                    else: 
+                        OD_ACT_CR.append(stats.mode(OD[:,tmp],axis = 1)[0].reshape(-1))
+                
+                latency = np.nanmean(OS[:2,tmp[start_ind:start_ind+10]],axis = 1).reshape(2,-1)
+                slope = np.nansum(abs(OS[:2,tmp[start_ind:end_ind]]-latency),axis=0)
+                trg_ind = np.where(slope>2.5)[0]
+                if trg_ind.any(): 
+                    trg_ind = tmp[start_ind] + trg_ind[0]
+                    if i in self.CmdTime['CL_t']: 
+                        OS_ACT_CL.append(stats.mode(OS[:,trg_ind:trg_ind+duration],axis = 1)[0].reshape(-1))
+                    else: 
+                        OS_ACT_CR.append(stats.mode(OS[:,trg_ind:trg_ind+duration],axis = 1)[0].reshape(-1))
+                else:
+                    if i in self.CmdTime['CL_t']: 
+                        OS_ACT_CL.append(stats.mode(OS[:,tmp],axis = 1)[0].reshape(-1))
+                    else: 
+                        OS_ACT_CR.append(stats.mode(OS[:,tmp],axis = 1)[0].reshape(-1))
+                
+                i = tmp[end_ind]+1
+                print(i)
+            elif i in self.CmdTime['UCR_t']:
+                tmp = self.CmdTime['UCR_t']
+                trg_ind = np.where(np.diff(tmp) > 5)[0]
+                if rd_ucr > 0 and rd_ucr < len(trg_ind): 
+                    i = tmp[trg_ind[rd_ucr]]+1;        rd_ucr += 1
+                    print(i)
+                    continue
+                elif rd_ucr > 0:
+                    i = self.CmdTime['UCR_t'][-1]+1;     rd_ucr += 1
+                    print(i)
+                    continue
+                OD_ACT.append(stats.mode(OD[:,tmp],axis = 1)[0].reshape(-1))
+                OS_ACT.append(stats.mode(OS[:,tmp],axis = 1)[0].reshape(-1))
+                
+                if trg_ind.any(): i = tmp[trg_ind[rd_ucr]]+1
+                else: i = self.CmdTime['UCR_t'][-1]+1                
+                rd_ucr += 1
+                print("UCR",i)
+            else:
+                i+=1
+        OD_ACT_CL_n = stats.mode(OD_ACT_CL,axis = 0)[0].reshape(-1)
+        OS_ACT_CL_n = stats.mode(OS_ACT_CL,axis = 0)[0].reshape(-1)
+        OD_ACT_CR_n = stats.mode(OD_ACT_CR,axis = 0)[0].reshape(-1)
+        OS_ACT_CR_n = stats.mode(OS_ACT_CR,axis = 0)[0].reshape(-1)
+        # ET、XT angle
+        OD_ACT = np.insert(OD_ACT,1,OD_ACT_CL_n, axis=0)
+        OD_ACT = np.insert(OD_ACT,2,OD_ACT_CR_n, axis=0)
+        OS_ACT = np.insert(OS_ACT,1,OS_ACT_CL_n, axis=0)
+        OS_ACT = np.insert(OS_ACT,2,OS_ACT_CR_n, axis=0)
+        self.OD_ACT = np.array(np.round(OD_ACT,2))
+        self.OS_ACT = np.array(np.round(OS_ACT,2))   
+        # Fixation_eye - Covered_eye
+        OD_fix_tmp = []; OS_fix_tmp = []
+        for i in range(0,len(OD_ACT_CR)):
+            try: OD_fix_tmp.append(OD_ACT_CL[2*(i+1)-2]-OD_ACT_CR[i])
+            except: pass
+            try: OD_fix_tmp.append(OD_ACT_CL[2*(i+1)-1]-OD_ACT_CR[i])
+            except: pass
+            try: OS_fix_tmp.append(OS_ACT_CR[i]-OS_ACT_CL[2*(i+1)-2])
+            except: pass
+            try: OS_fix_tmp.append(OS_ACT_CR[i]-OS_ACT_CL[2*(i+1)-1])
+            except: pass
+            
+        OD_fix = stats.mode(np.array(OD_fix_tmp),axis = 0)[0].reshape(-1)    # CL-CR
+        OS_fix = stats.mode(np.array(OS_fix_tmp),axis = 0)[0].reshape(-1)     # CR-CL
+        
+        try:
+            OD_fix = np.append(trans_PD(self.AL_OD,OD_fix[0:2],CAL_VAL_OD), OD_fix[2])
+            OS_fix = np.append(trans_PD(self.AL_OS,OS_fix[0:2],CAL_VAL_OS), OS_fix[2])
+        except:
+            print("No profile")
+            
+        self.OD_fix = OD_fix        # one position in each ACT_TIME
+        self.OS_fix = OS_fix 
+        
+    def FeatureExtraction(self):  
+        delete = np.where(self.CmdTime['O_t']>len(self.OD[0])-1)[0]
+        if delete.any():
+            self.CmdTime['O_t'] = np.delete(self.CmdTime['O_t'], delete)
+        
+        delete = np.where(self.CmdTime['CL_t']>len(self.OD[0])-1)[0]
+        if delete.any():
+            self.CmdTime['CL_t'] = np.delete(self.CmdTime['CL_t'], delete)
+        
+        delete = np.where(self.CmdTime['CR_t']>len(self.OD[0])-1)[0]
+        if delete.any():
+            self.CmdTime['CR_t'] = np.delete(self.CmdTime['CR_t'], delete)
+        
+        delete = np.where(self.CmdTime['UCR_t']>len(self.OD[0])-1)[0]
+        if delete.any():
+            self.CmdTime['UCR_t'] = np.delete(self.CmdTime['UCR_t'], delete)
+            
+        if not self.IsVoiceCommand:
+            self.NoVoiceCommandFeatureExtraction()
+        else:           
+            self.VoiceCommandFeatureExtraction()   
+        plt.subplot(2,2,1)
+        plt.title(self.ID)
+        plt.plot(self.OD[0,:]-np.nanmin(self.OD[0,:]))
+        plt.plot(self.OD[1,:]-np.nanmin(self.OD[1,:]))
+        plt.hlines(self.OD_ACT[1][0]-np.nanmin(self.OD[0,:]),0,len(self.OD[1,:]), color ='r')# CL
+        plt.hlines(self.OD_ACT[1][1]-np.nanmin(self.OD[1,:]),0,len(self.OD[1,:]), color ='g')# CL
+        plt.hlines(self.OD_ACT[2][0]-np.nanmin(self.OD[0,:]),0,len(self.OD[1,:]), color ='r')# CR
+        plt.hlines(self.OD_ACT[2][1]-np.nanmin(self.OD[1,:]),0,len(self.OD[1,:]), color ='g')# CR
+        plt.subplot(2,2,2)
+        plt.plot(self.OS[0,:]-np.nanmin(self.OS[0,:]))
+        plt.plot(self.OS[1,:]-np.nanmin(self.OS[1,:]))
+        plt.hlines(self.OS_ACT[1][0]-np.nanmin(self.OS[0,:]),0,len(self.OS[1,:]), color ='r')# CL
+        plt.hlines(self.OS_ACT[1][1]-np.nanmin(self.OS[1,:]),0,len(self.OS[1,:]), color ='g')# CL
+        plt.hlines(self.OS_ACT[2][0]-np.nanmin(self.OS[0,:]),0,len(self.OS[1,:]), color ='r')# CR
+        plt.hlines(self.OS_ACT[2][1]-np.nanmin(self.OS[1,:]),0,len(self.OS[1,:]), color ='g')# CR
+        plt.show()
     def GetDiagnosis(self):
         OD_fix = self.OD_fix; OS_fix = self.OS_fix
         thr =1.5
@@ -864,15 +1029,17 @@ class ACT_Task(Neurobit):
         miss_OS = np.count_nonzero(np.isnan(OS[0]))/len(OS[0])
         OD_ACT = np.array(OD_ACT)
         OS_ACT = np.array(OS_ACT)
-        ACT_Save._ACT_image_QT['OD_X_SSstd_CL'].append(OD_ACT[0,0])
-        ACT_Save._ACT_image_QT['OD_X_SSstd_CR'].append(OD_ACT[1,0])
-        ACT_Save._ACT_image_QT['OS_X_SSstd_CL'].append(OS_ACT[0,0])
-        ACT_Save._ACT_image_QT['OS_X_SSstd_CR'].append(OS_ACT[1,0])
-        ACT_Save._ACT_image_QT['OD_Y_SSstd_CL'].append(OD_ACT[0,1])
-        ACT_Save._ACT_image_QT['OD_Y_SSstd_CR'].append(OD_ACT[1,1])
-        ACT_Save._ACT_image_QT['OS_Y_SSstd_CL'].append(OS_ACT[0,1])
-        ACT_Save._ACT_image_QT['OS_Y_SSstd_CR'].append(OS_ACT[1,1])
-        
+# =============================================================================
+#         ACT_Save._ACT_image_QT['OD_X_SSstd_CL'].append(OD_ACT[0,0])
+#         ACT_Save._ACT_image_QT['OD_X_SSstd_CR'].append(OD_ACT[1,0])
+#         ACT_Save._ACT_image_QT['OS_X_SSstd_CL'].append(OS_ACT[0,0])
+#         ACT_Save._ACT_image_QT['OS_X_SSstd_CR'].append(OS_ACT[1,0])
+#         ACT_Save._ACT_image_QT['OD_Y_SSstd_CL'].append(OD_ACT[0,1])
+#         ACT_Save._ACT_image_QT['OD_Y_SSstd_CR'].append(OD_ACT[1,1])
+#         ACT_Save._ACT_image_QT['OS_Y_SSstd_CL'].append(OS_ACT[0,1])
+#         ACT_Save._ACT_image_QT['OS_Y_SSstd_CR'].append(OS_ACT[1,1])
+#         
+# =============================================================================
         ACT_Save._ACT_image_QT['OD_misPoint'].append(miss_OD)
         ACT_Save._ACT_image_QT['OS_misPoint'].append(miss_OS)
         ACT_Save._ACT_image_QT['OD_fx'].append(self.OD_fix)
@@ -905,13 +1072,13 @@ class ACT_Task(Neurobit):
             if EYE[i] == 'OD':
                 x_diff = self.OD_ACT[0,0]-OD[0,:]
                 y_diff = self.OD_ACT[0,1]-OD[1,:]
-                x_PD = trans_PD(self.AL_OD,x_diff)
-                y_PD = trans_PD(self.AL_OD,y_diff)
+                x_PD = trans_PD(self.AL_OD,x_diff,CAL_VAL_OD)
+                y_PD = trans_PD(self.AL_OD,y_diff,CAL_VAL_OD)
             else:
                 x_diff = self.OS_ACT[0,0]-OS[0,:]
                 y_diff = self.OS_ACT[0,1]-OS[1,:]
-                x_PD = trans_PD(self.AL_OS,x_diff)
-                y_PD = trans_PD(self.AL_OS,y_diff)
+                x_PD = trans_PD(self.AL_OS,x_diff,CAL_VAL_OS)
+                y_PD = trans_PD(self.AL_OS,y_diff,CAL_VAL_OS)
             plt.subplot(1,2,i+1)
             plt.plot(time,x_PD, linewidth=1, color = 'b',label = 'X axis')
             plt.plot(time,y_PD, linewidth=1, color = 'r',label = 'Y axis')
@@ -924,19 +1091,20 @@ class ACT_Task(Neurobit):
             plt.xticks(fontsize= 8)
             plt.yticks(fontsize= 8)
             
-            plt.text(0,90, "right",color='lightsteelblue' ,
-                     horizontalalignment='left',
-                     verticalalignment='center', fontsize=8)
-            plt.text(0,-90, "left",color='lightsteelblue' ,
-                     horizontalalignment='left',
-                     verticalalignment='center', fontsize=8)
-            plt.text(time[-1], 90,"up",color='salmon',
-                     horizontalalignment='right',
-                     verticalalignment='center', fontsize=8)
-            plt.text(time[-1], -90,"down",color='salmon',
-                     horizontalalignment='right',
-                     verticalalignment='center', fontsize=8) 
-            plt.ylim([-100,100])
+            if not np.isnan(x_PD).all():
+                plt.text(0,90, "right",color='lightsteelblue' ,
+                         horizontalalignment='left',
+                         verticalalignment='center', fontsize=8)
+                plt.text(0,-90, "left",color='lightsteelblue' ,
+                         horizontalalignment='left',
+                         verticalalignment='center', fontsize=8)
+                plt.text(time[-1], 90,"up",color='salmon',
+                         horizontalalignment='right',
+                         verticalalignment='center', fontsize=8)
+                plt.text(time[-1], -90,"down",color='salmon',
+                         horizontalalignment='right',
+                         verticalalignment='center', fontsize=8) 
+                plt.ylim([-100,100])
         plt.tight_layout()
         plt.savefig(os.path.join(self.saveImage_path,"DrawEyeTrack.png")) 
     def DrawEyeFig(self):
@@ -1055,7 +1223,9 @@ class Gaze9_Task(Neurobit):
             if arg: Finished_ACT = True; ACT_Task = arg
         self.GetCommand()        
         self.GetEyePosition()
-        self.SeperateSession()                
+# =============================================================================
+#         self.SeperateSession()                
+# =============================================================================
         if Finished_ACT: self.FeatureExtraction(ACT_Task) 
         else: self.FeatureExtraction() 
         self.Save2Cloud()
@@ -1072,13 +1242,19 @@ class Gaze9_Task(Neurobit):
     
         x = np.round(self.VoiceCommand[0,:],2); y = np.round(self.VoiceCommand[1,:],2); self.CmdTime = dict()
         
-        x_q1 = np.unique(x)[0]
-        x_q2 = np.unique(x)[1]
-        x_q3 = np.unique(x)[-1]
+        u = np.unique(x[~np.isnan(x)])
+        if len(u)>3 and np.std(u)>30: 
+            u = np.delete(u,np.where(abs(u)>np.std(u))[0])
+        x_q1 = u[0]
+        x_q2 = u[1]
+        x_q3 = u[-1]
 
-        y_q1 = np.unique(y)[0]
-        y_q2 = np.unique(y)[1]
-        y_q3 = np.unique(y)[-1]
+        u = np.unique(y[~np.isnan(y)])
+        if len(u)>3 and np.std(u)>30: 
+            u = np.delete(u,np.where(abs(u)>np.std(u))[0])
+        y_q1 = u[0]
+        y_q2 = u[1]
+        y_q3 = u[-1]
         
         if int(self.Date) < 20210913:
             D = np.where(np.logical_and(np.logical_and(x < x_q3, x > x_q1), y == y_q3))[0]#[60:]
@@ -1104,98 +1280,51 @@ class Gaze9_Task(Neurobit):
             exec('self.CmdTime[GAZE_9_TIME[i]] = '+ GAZE_9_TIME[i])
     def FeatureExtraction(self,*args):
         GAZE_9_TIME     = ['D','F','L','LD','LU','R','RD','RU','U']
-        OD = self.OD; OS = self.OS; Finished_ACT = False
+        if int(self.Date)>=20210914:
+            GAZE_9_TIME     = ['F','U','D','L','R','LU','RU','LD','RD']
+        OD = np.round(self.OD,0); OS = np.round(self.OS,0)
+        Finished_ACT = False
         Gaze_9_OD = []; Gaze_9_OS = [];       # all position in each ACT_TIME
         NeurobitDxDev_H = list();NeurobitDxDev_V = list()
-        for i in range(0,len(GAZE_9_TIME)):
-            temp = self.CmdTime[GAZE_9_TIME[i]]
-            delete = np.where(temp>len(OD[0])-1)[0]
+        for direc in GAZE_9_TIME:
+            tmp = self.CmdTime[direc]
+            delete = np.where(tmp>len(OD[0])-1)[0]
             if delete.any():
-                temp = np.delete(temp, delete)
-            if type(self.CmdTime[GAZE_9_TIME[i]]) == list:
-                OD_ACT_tmp = []; OS_ACT_tmp = [];
-                for temp in self.CmdTime[GAZE_9_TIME[i]]:
-                    diff_x = np.diff(OD[0][temp])
-                    grad_x = np.sign(diff_x)
-                    plateau_x = OD[0][temp][np.where(grad_x==0)[0]+1]
+                tmp = np.delete(tmp, delete)
+            if tmp.any():
+                for eye in EYE:
+                    if eye == 'OD': position = OD[:,tmp]
+                    else:           position = OS[:,tmp]
+                    up_env = np.nanpercentile(position,80,axis = 1).reshape(-1)
+                    low_env = np.nanpercentile(position,20,axis = 1).reshape(-1)
+                    mid_line = np.nanpercentile(position,50,axis = 1).reshape(-1)
+                    if direc == 'D':
+                        Gaze9_tmp = np.array([mid_line[0], up_env[1], mid_line[2]])
+                    elif direc == 'F':
+                        Gaze9_tmp = np.array([mid_line[0], mid_line[1], mid_line[2]])
+                    elif direc == 'L':
+                        Gaze9_tmp = np.array([up_env[0], mid_line[1], mid_line[2]])
+                    elif direc == 'LD':
+                        Gaze9_tmp = np.array([up_env[0], up_env[1], mid_line[2]])
+                    elif direc == 'LU':
+                        Gaze9_tmp = np.array([up_env[0], low_env[1], mid_line[2]])
+                    elif direc == 'R':
+                        Gaze9_tmp = np.array([low_env[0], mid_line[1], mid_line[2]])
+                    elif direc == 'RD':
+                        Gaze9_tmp = np.array([low_env[0], up_env[1], mid_line[2]])
+                    elif direc == 'RU':
+                        Gaze9_tmp = np.array([low_env[0], low_env[1], mid_line[2]])
+                    elif direc == 'U':
+                        Gaze9_tmp = np.array([mid_line[0], low_env[1], mid_line[2]])
                     
-                    diff_y = np.diff(OD[1][temp])
-                    grad_y = np.sign(diff_y)
-                    plateau_y = OD[1][temp][np.where(grad_y==0)[0]+1]
-                    
-                    diff_p = np.diff(OD[2][temp])
-                    grad_p = np.sign(diff_p)
-                    plateau_p = OD[2][temp][np.where(grad_p==0)[0]+1]
-                    
-                    OD_ACT_tmp.append(np.round(
-                        [np.nanpercentile(plateau_x, 50),     # x axis
-                         np.nanpercentile(plateau_y, 50),     # y axis
-                         np.nanpercentile(plateau_p, 50)],2)) # pupil size
-                    
-                    diff_x = np.diff(OS[0][temp])
-                    grad_x = np.sign(diff_x)
-                    plateau_x = OS[0][temp][np.where(grad_x==0)[0]+1]
-                    
-                    diff_y = np.diff(OS[1][temp])
-                    grad_y = np.sign(diff_y)
-                    plateau_y = OS[1][temp][np.where(grad_y==0)[0]+1]
-                    
-                    diff_p = np.diff(OS[2][temp])
-                    grad_p = np.sign(diff_p)
-                    plateau_p = OS[2][temp][np.where(grad_p==0)[0]+1]
-                    
-                    OS_ACT_tmp.append(np.round(
-                        [np.nanpercentile(plateau_x, 50),     # x axis
-                         np.nanpercentile(plateau_y, 50),     # y axis
-                         np.nanpercentile(plateau_p, 50)],2)) # pupil size
-                    
-                OD_ACT_tmp = np.array(OD_ACT_tmp)
-                OS_ACT_tmp = np.array(OS_ACT_tmp)
-                Gaze_9_OD.append(np.round(
-                    [np.nanpercentile(OD_ACT_tmp[:,0], 50),     # x axis
-                     np.nanpercentile(OD_ACT_tmp[:,1], 50),     # y axis
-                     np.nanpercentile(OD_ACT_tmp[:,2], 50)],2))
-                Gaze_9_OS.append(np.round(
-                    [np.nanpercentile(OS_ACT_tmp[:,0], 50),     # x axis
-                     np.nanpercentile(OS_ACT_tmp[:,1], 50),     # y axis
-                     np.nanpercentile(OS_ACT_tmp[:,2], 50)],2))
+                    if eye == 'OD': Gaze_9_OD.append(Gaze9_tmp)
+                    else:           Gaze_9_OS.append(Gaze9_tmp)    
             else:
-                diff_x = np.diff(OD[0][temp])
-                grad_x = np.sign(diff_x)
-                plateau_x = OD[0][temp][np.where(grad_x==0)[0]+1]
-                
-                diff_y = np.diff(OD[1][temp])
-                grad_y = np.sign(diff_y)
-                plateau_y = OD[1][temp][np.where(grad_y==0)[0]+1]
-                
-                diff_p = np.diff(OD[2][temp])
-                grad_p = np.sign(diff_p)
-                plateau_p = OD[2][temp][np.where(grad_p==0)[0]+1]
-                
-                Gaze_9_OD.append(np.round(
-                    [np.nanpercentile(plateau_x, 50),     # x axis
-                     np.nanpercentile(plateau_y, 50),     # y axis
-                     np.nanpercentile(plateau_p, 50)],2)) # pupil size
-                
-                diff_x = np.diff(OS[0][temp])
-                grad_x = np.sign(diff_x)
-                plateau_x = OS[0][temp][np.where(grad_x==0)[0]+1]
-                
-                diff_y = np.diff(OS[1][temp])
-                grad_y = np.sign(diff_y)
-                plateau_y = OS[1][temp][np.where(grad_y==0)[0]+1]
-                
-                diff_p = np.diff(OS[2][temp])
-                grad_p = np.sign(diff_p)
-                plateau_p = OS[2][temp][np.where(grad_p==0)[0]+1]
-                
-                Gaze_9_OS.append(np.round(
-                    [np.nanpercentile(plateau_x, 50),     # x axis
-                     np.nanpercentile(plateau_y, 50),     # y axis
-                     np.nanpercentile(plateau_p, 50)],2)) # pupil size
+                Gaze_9_OD.append([np.nan, np.nan, np.nan])
+                Gaze_9_OS.append([np.nan, np.nan, np.nan])
                         
-        self.Gaze_9_OD = np.array(Gaze_9_OD)
-        self.Gaze_9_OS = np.array(Gaze_9_OS)
+        self.Gaze_9_OD = np.array(np.round(Gaze_9_OD,2))
+        self.Gaze_9_OS = np.array(np.round(Gaze_9_OS,2))
         
         for arg in args:
             if arg:
@@ -1213,8 +1342,8 @@ class Gaze9_Task(Neurobit):
                 diff_OD_y = self.Gaze_9_OD[1][1]-self.Gaze_9_OD[i][1]
                 diff_OS_x = self.Gaze_9_OS[1][0]-self.Gaze_9_OS[i][0]
                 diff_OS_y = self.Gaze_9_OS[1][1]-self.Gaze_9_OS[i][1]
-            PD_OD = trans_AG(self.AL_OD,np.array([diff_OD_x, diff_OD_y]))
-            PD_OS = trans_AG(self.AL_OS,np.array([diff_OS_x, diff_OS_y]))
+            PD_OD = trans_AG(self.AL_OD,np.array([diff_OD_x, diff_OD_y]),CAL_VAL_OD)
+            PD_OS = trans_AG(self.AL_OS,np.array([diff_OS_x, diff_OS_y]),CAL_VAL_OS)
             NeurobitDxDev_H.append([PD_OD[0], PD_OS[0]])
             NeurobitDxDev_V.append([PD_OD[1], PD_OS[1]])
             Gaze9_Save._Gaze9_dx[GAZE_9_TIME[i]+'_OD_H_Dev'].append(PD_OD[0])
@@ -1224,17 +1353,15 @@ class Gaze9_Task(Neurobit):
         self.NeurobitDxDev_H = np.round(np.array(NeurobitDxDev_H),2)
         self.NeurobitDxDev_V = np.round(np.array(NeurobitDxDev_V),2)
         
-        GAZE_9_TIME     = ['D','F','L','LD','LU','R','RD','RU','U']
-        x_lower = self.Gaze_9_OD.transpose()[0][[5,6,0,3,2]]
-        x_upper = self.Gaze_9_OD.transpose()[0][[5,7,8,4,2]]
-        y_lower = -self.Gaze_9_OD.transpose()[1][[5,6,0,3,2]]
-        y_upper = -self.Gaze_9_OD.transpose()[1][[5,7,8,4,2]]
-        OD_Area = enclosed_area(x_lower, y_lower, x_upper, y_upper)
-        x_lower = self.Gaze_9_OS.transpose()[0][[5,6,0,3,2]]
-        x_upper = self.Gaze_9_OS.transpose()[0][[5,7,8,4,2]]
-        y_lower = -self.Gaze_9_OS.transpose()[1][[5,6,0,3,2]]
-        y_upper = -self.Gaze_9_OS.transpose()[1][[5,7,8,4,2]]
-        OS_Area = enclosed_area(x_lower, y_lower, x_upper, y_upper)
+        a = self.NeurobitDxDev_H.transpose()[0][[5,7,8,4,2,3,0,6]]
+        b = self.NeurobitDxDev_V.transpose()[0][[5,7,8,4,2,3,0,6]]
+        xy = np.array([a,b]).transpose()
+        OD_Area = np.round(enclosed_area(xy),2)
+        
+        a = self.NeurobitDxDev_H.transpose()[1][[5,7,8,4,2,3,0,6]]
+        b = self.NeurobitDxDev_V.transpose()[1][[5,7,8,4,2,3,0,6]]
+        xy = np.array([a,b]).transpose()
+        OS_Area = np.round(enclosed_area(xy),2)
         
         Gaze9_Save._Gaze9_dx['ID'].append(self.ID)
         Gaze9_Save._Gaze9_dx['Examine Date'].append(self.Date)
@@ -1242,6 +1369,8 @@ class Gaze9_Task(Neurobit):
         Gaze9_Save._Gaze9_dx['OS_Area'].append(OS_Area)
         
     def SeperateSession(self):
+        if int(self.Date)>=20210914:
+            GAZE_9_TIME     = ['F','U','D','L','R','LU','RU','LD','RD']
         OD = self.OD; OS = self.OS
         for i in range(0,len(GAZE_9_TIME)):
             temp = self.CmdTime[GAZE_9_TIME[i]]
@@ -1280,13 +1409,13 @@ class Gaze9_Task(Neurobit):
             if EYE[i] == 'OD':
                 x_diff = self.Gaze_9_OD[1][0]-OD[0,:]
                 y_diff = self.Gaze_9_OD[1][1]-OD[1,:]
-                x_PD = trans_AG(self.AL_OD,x_diff)
-                y_PD = trans_AG(self.AL_OD,y_diff)
+                x_PD = trans_AG(self.AL_OD,x_diff,CAL_VAL_OD)
+                y_PD = trans_AG(self.AL_OD,y_diff,CAL_VAL_OD)
             else:
                 x_diff = self.Gaze_9_OS[1][0]-OS[0,:]
                 y_diff = self.Gaze_9_OS[1][1]-OS[1,:]
-                x_PD = trans_AG(self.AL_OS,x_diff)
-                y_PD = trans_AG(self.AL_OS,y_diff)
+                x_PD = trans_AG(self.AL_OS,x_diff,CAL_VAL_OS)
+                y_PD = trans_AG(self.AL_OS,y_diff,CAL_VAL_OS)
             plt.subplot(1,2,i+1)
             plt.plot(time,x_PD, linewidth=1, color = 'b',label = 'X axis')
             plt.plot(time,y_PD, linewidth=1, color = 'r',label = 'Y axis')
@@ -1412,7 +1541,8 @@ class Gaze9_Task(Neurobit):
             
         plt.tight_layout()
         plt.savefig(os.path.join(self.saveImage_path,"DrawEyeMesh.png"))
-        plt.close()
+        #plt.close()
+        plt.show()
         
 class CUT_Task(Neurobit):
     def __init__(self, csv_path):
@@ -1434,7 +1564,9 @@ class CUT_Task(Neurobit):
     def Exec(self):
         self.GetCommand()        
         self.GetEyePosition()  
-        self.SeperateSession()              
+# =============================================================================
+#         self.SeperateSession()              
+# =============================================================================
         self.FeatureExtraction()  
         self.GetDiagnosis()  
         self.Save2Cloud()
@@ -1447,108 +1579,32 @@ class CUT_Task(Neurobit):
         self.GetCutTimeFromCmd()
         self.IsVoiceCommand = True
     def FeatureExtraction(self):
-        OD = self.OD.astype('float'); OS = self.OS.astype('float')
-        OD_mean = np.nanmean(OD[0,:]); OD_std = np.nanstd(OD[0,:])
-        OS_mean = np.nanmean(OS[0,:]); OS_std = np.nanstd(OS[0,:])
-        delet_OD = np.logical_and(OD[0,:]>OD_mean+OD_std*2, OD[0,:]>OD_mean-OD_std*2)
-        delet_OS = np.logical_and(OS[0,:]>OS_mean+OS_std*2, OS[0,:]>OS_mean-OS_std*2)
-        if delet_OD.any():
-            OD[:,delet_OD] = np.nan
-        if delet_OS.any():
-            OS[:,delet_OS] = np.nan
+        OD = np.round(self.OD,0); OS = np.round(self.OS,0)
         OD_ACT = []; OS_ACT = [];       # all position in each CUT_TIME
         for i in range(0,len(CUT_TIME)):
             temp = self.CmdTime[CUT_TIME[i]]
-# =============================================================================
-#             delete = np.where(temp>len(OD[0])-1)[0]
-#             if delete.any():
-#                 temp = np.delete(temp, delete)
-# =============================================================================
+            delete = np.where(temp>len(OD[0])-1)[0]
+            if delete.any():
+                temp = np.delete(temp, delete)
             if type(self.CmdTime[CUT_TIME[i]]) == list:
                 OD_ACT_tmp = []; OS_ACT_tmp = [];
-                thr_odx = 50; thr_ody = 50; thr_osx = 50; thr_osy = 50
                 for temp in self.CmdTime[CUT_TIME[i]]:
-                    diff_x = np.diff(OD[0][temp])
-                    grad_x = np.sign(diff_x)
-                    plateau_x = OD[0][temp][np.where(grad_x==0)[0]+1]
-                    
-                    diff_y = np.diff(OD[1][temp])
-                    grad_y = np.sign(diff_y)
-                    plateau_y = OD[1][temp][np.where(grad_y==0)[0]+1]
-                    
-                    diff_p = np.diff(OD[2][temp])
-                    grad_p = np.sign(diff_p)
-                    plateau_p = OD[2][temp][np.where(grad_p==0)[0]+1]
-                    
-                    OD_ACT_tmp.append(np.round(
-                        [np.nanpercentile(plateau_x, 50),     # x axis
-                         np.nanpercentile(plateau_y, 50),     # y axis
-                         np.nanpercentile(plateau_p, 50)],2)) # pupil size
-                    
-                    diff_x = np.diff(OS[0][temp])
-                    grad_x = np.sign(diff_x)
-                    plateau_x = OS[0][temp][np.where(grad_x==0)[0]+1]
-                    
-                    diff_y = np.diff(OS[1][temp])
-                    grad_y = np.sign(diff_y)
-                    plateau_y = OS[1][temp][np.where(grad_y==0)[0]+1]
-                    
-                    diff_p = np.diff(OS[2][temp])
-                    grad_p = np.sign(diff_p)
-                    plateau_p = OS[2][temp][np.where(grad_p==0)[0]+1]
-                    
-                    OS_ACT_tmp.append(np.round(
-                        [np.nanpercentile(plateau_x, 50),     # x axis
-                         np.nanpercentile(plateau_y, 50),     # y axis
-                         np.nanpercentile(plateau_p, 50)],2)) # pupil size
-                    
+                        OD_ACT_tmp.append(stats.mode(OD[:,temp],axis = 1)[0].reshape(-1))
+                        OS_ACT_tmp.append(stats.mode(OS[:,temp],axis = 1)[0].reshape(-1))
                 OD_ACT_tmp = np.array(OD_ACT_tmp)
                 OS_ACT_tmp = np.array(OS_ACT_tmp)
-                OD_ACT.append(np.round(
-                    [np.nanpercentile(OD_ACT_tmp[:,0], 50),     # x axis
-                     np.nanpercentile(OD_ACT_tmp[:,1], 50),     # y axis
-                     np.nanpercentile(OD_ACT_tmp[:,2], 50)],2))
-                OS_ACT.append(np.round(
-                    [np.nanpercentile(OS_ACT_tmp[:,0], 50),     # x axis
-                     np.nanpercentile(OS_ACT_tmp[:,1], 50),     # y axis
-                     np.nanpercentile(OS_ACT_tmp[:,2], 50)],2))
+                OD_ACT.append(np.round(stats.mode(OD_ACT_tmp,axis = 1)[0][0].reshape(-1),2))
+                OS_ACT.append(np.round(stats.mode(OS_ACT_tmp,axis = 1)[0][0].reshape(-1),2))
+            elif temp.any():                
+                OD_ACT.append(stats.mode(OD[:,temp],axis = 1)[0].reshape(-1))
+                OS_ACT.append(stats.mode(OS[:,temp],axis = 1)[0].reshape(-1))
             else:
-                diff_x = np.diff(OD[0][temp])
-                grad_x = np.sign(diff_x)
-                plateau_x = OD[0][temp][np.where(grad_x==0)[0]+1]
-                
-                diff_y = np.diff(OD[1][temp])
-                grad_y = np.sign(diff_y)
-                plateau_y = OD[1][temp][np.where(grad_y==0)[0]+1]
-                
-                diff_p = np.diff(OD[2][temp])
-                grad_p = np.sign(diff_p)
-                plateau_p = OD[2][temp][np.where(grad_p==0)[0]+1]
-                
-                OD_ACT.append(np.round(
-                    [np.nanpercentile(plateau_x, 50),     # x axis
-                     np.nanpercentile(plateau_y, 50),     # y axis
-                     np.nanpercentile(plateau_p, 50)],2)) # pupil size
-                diff_x = np.diff(OS[0][temp])
-                grad_x = np.sign(diff_x)
-                plateau_x = OS[0][temp][np.where(grad_x==0)[0]+1]
-                
-                diff_y = np.diff(OS[1][temp])
-                grad_y = np.sign(diff_y)
-                plateau_y = OS[1][temp][np.where(grad_y==0)[0]+1]
-                
-                diff_p = np.diff(OS[2][temp])
-                grad_p = np.sign(diff_p)
-                plateau_p = OS[2][temp][np.where(grad_p==0)[0]+1]
-                
-                OS_ACT.append(np.round(
-                    [np.nanpercentile(plateau_x, 50),     # x axis
-                     np.nanpercentile(plateau_y, 50),     # y axis
-                     np.nanpercentile(plateau_p, 50)],2)) # pupil size
+                OD_ACT.append([np.nan, np.nan, np.nan])
+                OS_ACT.append([np.nan, np.nan, np.nan])
         
         # ET、XT angle
-        OD_ACT = np.array(OD_ACT)
-        OS_ACT = np.array(OS_ACT)
+        OD_ACT = np.array(np.round(OD_ACT,2))
+        OS_ACT = np.array(np.round(OS_ACT,2))
         self.OD_ACT = OD_ACT
         self.OS_ACT = OS_ACT
         # Fixation_eye - Uncovered_eye
@@ -1558,12 +1614,42 @@ class CUT_Task(Neurobit):
         OD_fix = OD_ACT[1]-OD_ACT[3]    # CL-CR
         OS_fix = OS_ACT[3]-OS_ACT[1]    # CR-CL
         
+        plt.subplot(2,2,1)
+        plt.plot(self.OD[0,:]-min(self.OD[0,:]))
+        plt.plot(self.OD[1,:]-min(self.OD[1,:]))
+        plt.hlines(OD_ACT[2][0]-min(self.OD[0,:]),0,len(self.OD[1,:]), color ='r')# CL
+        plt.hlines(OD_ACT[2][1]-min(self.OD[1,:]),0,len(self.OD[1,:]), color ='g')# CL
+        plt.hlines(OD_ACT[1][0]-min(self.OD[0,:]),0,len(self.OD[1,:]), color ='r')# CR
+        plt.hlines(OD_ACT[1][1]-min(self.OD[1,:]),0,len(self.OD[1,:]), color ='g')# CR
+        plt.subplot(2,2,2)
+        plt.plot(self.OS[0,:]-min(self.OS[0,:]))
+        plt.plot(self.OS[1,:]-min(self.OS[1,:]))
+        plt.hlines(OS_ACT[2][0]-min(self.OS[0,:]),0,len(self.OS[1,:]), color ='r')# CL
+        plt.hlines(OS_ACT[2][1]-min(self.OS[1,:]),0,len(self.OS[1,:]), color ='g')# CL
+        plt.hlines(OS_ACT[1][0]-min(self.OS[0,:]),0,len(self.OS[1,:]), color ='r')# CR
+        plt.hlines(OS_ACT[1][1]-min(self.OS[1,:]),0,len(self.OS[1,:]), color ='g')# CR
+        plt.subplot(2,2,3)
+        plt.plot(self.OD[0,:]-min(self.OD[0,:]))
+        plt.plot(self.OD[1,:]-min(self.OD[1,:]))
+        plt.hlines(OD_ACT[4][0]-min(self.OD[0,:]),0,len(self.OD[1,:]), color ='r')# UCL
+        plt.hlines(OD_ACT[4][1]-min(self.OD[1,:]),0,len(self.OD[1,:]), color ='g')# UCR
+        plt.hlines(OD_ACT[3][0]-min(self.OD[0,:]),0,len(self.OD[1,:]), color ='r')# UCL
+        plt.hlines(OD_ACT[3][1]-min(self.OD[1,:]),0,len(self.OD[1,:]), color ='g')# UCR
+        plt.subplot(2,2,4)
+        plt.plot(self.OS[0,:]-min(self.OS[0,:]))
+        plt.plot(self.OS[1,:]-min(self.OS[1,:]))
+        plt.hlines(OS_ACT[4][0]-min(self.OS[0,:]),0,len(self.OS[1,:]), color ='r')# UCL
+        plt.hlines(OS_ACT[4][1]-min(self.OS[1,:]),0,len(self.OS[1,:]), color ='g')# UCR
+        plt.hlines(OS_ACT[3][0]-min(self.OS[0,:]),0,len(self.OS[1,:]), color ='r')# UCL
+        plt.hlines(OS_ACT[3][1]-min(self.OS[1,:]),0,len(self.OS[1,:]), color ='g')# UCR
+        plt.show()
+        
         try:
-            OD_fix = np.append(trans_PD(self.AL_OD,OD_fix[0:2]), OD_fix[2])
-            OS_fix = np.append(trans_PD(self.AL_OS,OS_fix[0:2]), OS_fix[2])
+            OD_fix = np.append(trans_PD(self.AL_OD,OD_fix[0:2],CAL_VAL_OD), OD_fix[2])
+            OS_fix = np.append(trans_PD(self.AL_OS,OS_fix[0:2],CAL_VAL_OS), OS_fix[2])
             
-            OS_phoria = np.append(trans_PD(self.AL_OD,OS_phoria[0:2]), OS_phoria[2])
-            OD_phoria = np.append(trans_PD(self.AL_OS,OD_phoria[0:2]), OD_phoria[2])
+            OS_phoria = np.append(trans_PD(self.AL_OS,OS_phoria[0:2],CAL_VAL_OS), OS_phoria[2])
+            OD_phoria = np.append(trans_PD(self.AL_OD,OD_phoria[0:2],CAL_VAL_OD), OD_phoria[2])
         except:
             print("No profile")
         self.OD_fix = OD_fix        # one position in each CUT_TIME
@@ -1724,13 +1810,13 @@ class CUT_Task(Neurobit):
             if EYE[i] == 'OD':
                 x_diff = self.OD_ACT[0,0]-OD[0,:]
                 y_diff = self.OD_ACT[0,1]-OD[1,:]
-                x_PD = trans_PD(self.AL_OD,x_diff)
-                y_PD = trans_PD(self.AL_OD,y_diff)
+                x_PD = trans_PD(self.AL_OD,x_diff,CAL_VAL_OD)
+                y_PD = trans_PD(self.AL_OD,y_diff,CAL_VAL_OD)
             else:
                 x_diff = self.OS_ACT[0,0]-OS[0,:]
                 y_diff = self.OS_ACT[0,1]-OS[1,:]
-                x_PD = trans_PD(self.AL_OS,x_diff)
-                y_PD = trans_PD(self.AL_OS,y_diff)
+                x_PD = trans_PD(self.AL_OS,x_diff,CAL_VAL_OS)
+                y_PD = trans_PD(self.AL_OS,y_diff,CAL_VAL_OS)
             plt.subplot(1,2,i+1)
             plt.plot(time,x_PD, linewidth=1, color = 'b',label = 'X axis')
             plt.plot(time,y_PD, linewidth=1, color = 'r',label = 'Y axis')
@@ -1777,7 +1863,8 @@ class CUT_Task(Neurobit):
                 ind_pu = np.where(pupil[ind] == np.nanmax(pupil[ind]))[0]
                 ACT.append(ind[ind_pu[0]])
             except:
-                ACT.append(ACT[-1])
+                try: ACT.append(ACT[-1])
+                except: ACT.append(0)
                 print("Not Detect "+ CUT_TIME[i]) 
         pic_cont = 1
         empt=0

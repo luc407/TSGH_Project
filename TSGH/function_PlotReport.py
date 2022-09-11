@@ -85,11 +85,18 @@ def subject_table(Subject):
 
 def clinic_table(Subject):
     if not np.isnan(Subject.Profile_ind):
-        data = [['Hx: ' + Subject.Dx +" XT:"+Subject.XT_PD+" ET:"+Subject.ET_PD+" hyper:"+Subject.HYPER+" hypo:"+Subject.HYPO,'','','','','','','','','',''],
-                ['',    'VAsc',          'VAcc',        'Auto-Ref',     'pupil',            'WTW',          'AXL',          'Hertel',           '',                 'PD',       'Stereo'],
-                ['OD',  Subject.VA_OD, Subject.BCVA_OD, Subject.Ref_OD,  Subject.pupil_OD,  Subject.WTW_OD, Subject.AL_OD, Subject.Hertal_OD,  Subject.Hertal_Len, Subject.PD, Subject.Stereo],
-                ['OS',  Subject.VA_OS, Subject.BCVA_OS, Subject.Ref_OS,  Subject.pupil_OS,  Subject.WTW_OS, Subject.AL_OS, Subject.Hertal_OS,  '',                 '',         ''],
-        ]     
+        try:
+            data = [['Hx: ' + Subject.Dx +" XT:"+Subject.XT_PD+" ET:"+Subject.ET_PD+" hyper:"+Subject.HYPER+" hypo:"+Subject.HYPO,'','','','','','','','','',''],
+                    ['',    'VAsc',          'VAcc',        'Auto-Ref',     'pupil',            'WTW',          'AXL',          'Hertel',           '',                 'PD',       'Stereo'],
+                    ['OD',  Subject.VA_OD, Subject.BCVA_OD, Subject.Ref_OD,  Subject.pupil_OD,  Subject.WTW_OD, Subject.AL_OD, Subject.Hertal_OD,  Subject.Hertal_Len, Subject.PD, Subject.Stereo],
+                    ['OS',  Subject.VA_OS, Subject.BCVA_OS, Subject.Ref_OS,  Subject.pupil_OS,  Subject.WTW_OS, Subject.AL_OS, Subject.Hertal_OS,  '',                 '',         ''],
+            ]     
+        except:
+            data = [['Hx: ' + Subject.Dx ,'','','','','','','','','',''],
+                    ['',    'VAsc',          'VAcc',        'Auto-Ref',     'pupil',            'WTW',          'AXL',          'Hertel',           '',                 'PD',       'Stereo'],
+                    ['OD',  Subject.VA_OD, Subject.BCVA_OD, Subject.Ref_OD,  Subject.pupil_OD,  Subject.WTW_OD, Subject.AL_OD, Subject.Hertal_OD,  Subject.Hertal_Len, Subject.PD, Subject.Stereo],
+                    ['OS',  Subject.VA_OS, Subject.BCVA_OS, Subject.Ref_OS,  Subject.pupil_OS,  Subject.WTW_OS, Subject.AL_OS, Subject.Hertal_OS,  '',                 '',         ''],
+            ]  
     else:
         data = [['Hx: ' + str(Subject.Profile_ind),'','','','','','','','','',''],
                 ['',    'VAsc',          'VAcc',        'Auto-Ref',     'pupil',            'WTW',          'AXL',          'Hertel',           '',                 'PD',       'Stereo'],
@@ -336,7 +343,7 @@ def Gaze9Report(Element, Gaze9_Session):
         ('BACKGROUND', (0, 0), (0, -1), colors.steelblue),
         ('BACKGROUND', (1, 1), (-1, 1), colors.powderblue)
     ]    
-    gaze_table = Table(dis_list, style=style, rowHeights=12) 
+    gaze_table = Table(dis_list, style=style, rowHeights=12, colWidths=6/8.4 *inch) 
     tbl_data = [
         [im4, gaze_table]]
     tbl = Table(tbl_data)
