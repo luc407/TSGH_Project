@@ -17,10 +17,11 @@ from matplotlib import pyplot as plt
 
 def get_eclipse_param_pupil(params):  
     params.filterByColor = False
+    params.filterByArea = True
     params.minThreshold = 65
     params.maxThreshold = 93
     params.blobColor = 225
-    params.minArea = 150
+    params.minArea = 300
     params.maxArea = 6000
     params.filterByCircularity = False
     params.filterByConvexity = True
@@ -150,6 +151,7 @@ def capture_eye_pupil(frame,eyes):
             
         thr = int(thr)
         if thr>=180: thr = 90
+        DC = True
         while not GET_CIRCLE and thr<180:            
             _,roi_gray1 = cv2.threshold(gray,thr,255,0)
 # =============================================================================
@@ -193,7 +195,10 @@ def capture_eye_pupil(frame,eyes):
 # =============================================================================
                             OS_p = [int(kp.pt[0]+eyes[1][0]), int(kp.pt[1]+eyes[1][1]), int(kp.size/2)]                
             else:
-                thr += 2
+                if DC: thr -= 2
+                if thr<10 or not DC:
+                    DC = False
+                    thr+=2
                 if ex == eyes[0][0]:
                     OD_p=[np.nan,np.nan,np.nan]
                 elif ex == eyes[1][0]:
