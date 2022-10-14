@@ -35,7 +35,10 @@ class ACT_Task(Neurobit):
     def Exec(self):
         self.GetCommand()   
         
-        self.GetEyePosition()  
+        self.GetEyePosition() 
+# =============================================================================
+#         self.Preprocessing()
+# =============================================================================
         #self.SeperateSession()              
         self.FeatureExtraction()  
         self.GetDiagnosis()  
@@ -99,22 +102,50 @@ class ACT_Task(Neurobit):
         self.OD_fix = OD_fix        # one position in each ACT_TIME
         self.OS_fix = OS_fix        
     def VoiceCommandFeatureExtraction(self):
+        def GetTrialCmd(i,eyePosition,ACT_Trial,act_time,CmdTime):
+            duration = int(2*24) # respond period = seconds*fps            
+            LT = 5  # Set default latency
+            CmdTmp = CmdTime[act_time];print(act_time, i)
+            Trial_trg_ind = np.where(np.diff(CmdTime[act_time]) > 5)[0]
+            start_ind = np.where(CmdTmp == i)[0][0]
+            end_ind = Trial_trg_ind[np.where(Trial_trg_ind>start_ind)[0]]                
+            if end_ind.any(): end_ind = end_ind[0]
+            else: end_ind = len(CmdTmp)-1                
+            # Find eyePosition inital respond point
+            baseline = np.nanmean(eyePosition[:2,CmdTmp[start_ind:start_ind+LT]],axis = 1).reshape(2,-1) # mean value in latency
+            slope = np.nansum(abs(eyePosition[:2,CmdTmp[start_ind:end_ind]]-baseline),axis=0)            # normalize eye position after latency
+            trg_ind = np.where(slope>2.5)[0]    # find differential more than 2.5 pixel
+            
+            if trg_ind.any(): 
+                trg_ind = CmdTmp[start_ind] + trg_ind[0]
+                ACT_Trial.append(np.nanmean(eyePosition[:,trg_ind:trg_ind+duration],axis = 1))
+            else:
+                ACT_Trial.append(np.nanmean(eyePosition[:,CmdTmp],axis = 1)) 
+            i = CmdTmp[end_ind]+1
+            return ACT_Trial, i
+        
+        # eyePosition
         OD = self.OD.astype('float'); OS = self.OS.astype('float')
         OD_ACT = []; OS_ACT = [];       # all position in each ACT_TIME  
+        
+        # ACT_Trial
         OD_ACT_CL = []; OS_ACT_CL = [];
         OD_ACT_CR = []; OS_ACT_CR = [];
+        
+        # Trial_trg_ind
         O_trg_ind = np.where(np.diff(self.CmdTime['O_t']) > 5)[0]
         UCR_trg_ind = np.where(np.diff(self.CmdTime['UCR_t']) > 5)[0]
-        CL_trg_ind = np.where(np.diff(self.CmdTime['CL_t']) > 5)[0]
-        CR_trg_ind = np.where(np.diff(self.CmdTime['CR_t']) > 5)[0]
-        i = 0; rd = 0; rd_ucr = 0; duration = 5*24
+        
+        i = 0;      # read CmdTime
+        rd = 0;     # read O_trg_ind index
+        rd_ucr = 0  # read UCR_trg_ind index        
         while(i < len(OD[0,:])):
             if i in self.CmdTime['O_t']:
                 tmp = self.CmdTime['O_t']
-                if rd > 0 and rd < len(O_trg_ind): 
+                if rd > 0 and rd < len(O_trg_ind):  # 2~(total session - 1)
                     i = tmp[O_trg_ind[rd]]+1;        rd += 1
                     continue
-                elif rd > 0:
+                elif rd > 0:    # the last session
                     i = self.CmdTime['O_t'][-1]+1;   rd += 1
                     continue
                 OD_ACT.append(stats.mode(OD[:,tmp].astype(int),axis = 1)[0].reshape(-1))
@@ -123,50 +154,14 @@ class ACT_Task(Neurobit):
                 i = self.CmdTime['CL_t'][0]            
                 rd += 1
                 print("O_t",i)
-            elif i in self.CmdTime['CL_t'] or i in self.CmdTime['CR_t']:   
-                
-                if i in self.CmdTime['CL_t']: tmp = self.CmdTime['CL_t'];print("CL_t")                  
-                else: tmp = self.CmdTime['CR_t'];print("CR_t")               
-                
-                start_ind = np.where(tmp == i)[0][0]
-                if i in self.CmdTime['CL_t']: end_ind = CL_trg_ind[np.where(CL_trg_ind>start_ind)[0]]
-                else: end_ind = CR_trg_ind[np.where(CR_trg_ind>start_ind)[0]]
-                
-                if end_ind.any(): end_ind = end_ind[0]
-                else: end_ind = len(tmp)-1
-                
-                latency = np.nanmean(OD[:2,tmp[start_ind:start_ind+10]],axis = 1).reshape(2,-1)
-                slope = np.nansum(abs(OD[:2,tmp[start_ind:end_ind]]-latency),axis=0)
-                trg_ind = np.where(slope>2.5)[0]
-                if trg_ind.any(): 
-                    trg_ind = tmp[start_ind] + trg_ind[0]
-                    if i in self.CmdTime['CL_t']: 
-                        OD_ACT_CL.append(stats.mode(OD[:,trg_ind:trg_ind+duration].astype(int),axis = 1)[0].reshape(-1))
-                    else: 
-                        OD_ACT_CR.append(stats.mode(OD[:,trg_ind:trg_ind+duration].astype(int),axis = 1)[0].reshape(-1))
-                else:
-                    if i in self.CmdTime['CL_t']: 
-                        OD_ACT_CL.append(stats.mode(OD[:,tmp].astype(int),axis = 1)[0].reshape(-1))
-                    else: 
-                        OD_ACT_CR.append(stats.mode(OD[:,tmp].astype(int),axis = 1)[0].reshape(-1))
-                
-                latency = np.nanmean(OS[:2,tmp[start_ind:start_ind+10]],axis = 1).reshape(2,-1)
-                slope = np.nansum(abs(OS[:2,tmp[start_ind:end_ind]]-latency),axis=0)
-                trg_ind = np.where(slope>2.5)[0]
-                if trg_ind.any(): 
-                    trg_ind = tmp[start_ind] + trg_ind[0]
-                    if i in self.CmdTime['CL_t']: 
-                        OS_ACT_CL.append(stats.mode(OS[:,trg_ind:trg_ind+duration].astype(int),axis = 1)[0].reshape(-1))
-                    else: 
-                        OS_ACT_CR.append(stats.mode(OS[:,trg_ind:trg_ind+duration].astype(int),axis = 1)[0].reshape(-1))
-                else:
-                    if i in self.CmdTime['CL_t']: 
-                        OS_ACT_CL.append(stats.mode(OS[:,tmp].astype(int),axis = 1)[0].reshape(-1))
-                    else: 
-                        OS_ACT_CR.append(stats.mode(OS[:,tmp].astype(int),axis = 1)[0].reshape(-1))
-                
-                i = tmp[end_ind]+1
+            elif i in self.CmdTime['CL_t']:
+                OD_ACT_CL,_ = GetTrialCmd(i,OD,OD_ACT_CL,'CL_t',self.CmdTime)
+                OS_ACT_CL,i = GetTrialCmd(i,OS,OS_ACT_CL,'CL_t',self.CmdTime)                    
+            elif i in self.CmdTime['CR_t']:
+                OD_ACT_CR,_ = GetTrialCmd(i,OD,OD_ACT_CR,'CR_t',self.CmdTime)
+                OS_ACT_CR,i = GetTrialCmd(i,OS,OS_ACT_CR,'CR_t',self.CmdTime) 
             elif i in self.CmdTime['UCR_t']:
+                print("UCR",i)
                 tmp = self.CmdTime['UCR_t']
                 if rd_ucr > 0 and rd_ucr < len(UCR_trg_ind): 
                     i = tmp[UCR_trg_ind[rd_ucr]]+1;        rd_ucr += 1
@@ -179,8 +174,7 @@ class ACT_Task(Neurobit):
                 
                 if UCR_trg_ind.any(): i = tmp[UCR_trg_ind[rd_ucr]]+1
                 else: i = self.CmdTime['UCR_t'][-1]+1                
-                rd_ucr += 1
-                print("UCR",i)
+                rd_ucr += 1                
             else:
                 i+=1
         OD_ACT_CL_n = stats.mode(OD_ACT_CL,axis = 0)[0].reshape(-1)
@@ -194,24 +188,26 @@ class ACT_Task(Neurobit):
         OS_ACT = np.insert(OS_ACT,2,OS_ACT_CR_n, axis=0)
         self.OD_ACT = np.array(np.round(OD_ACT,2))
         self.OS_ACT = np.array(np.round(OS_ACT,2))   
+        
         # Fixation_eye - Covered_eye
         OD_fix_tmp = []; OS_fix_tmp = []
         for i in range(0,len(OD_ACT_CR)):
-            try: OD_fix_tmp.append(OD_ACT_CL[2*(i+1)-2]-OD_ACT_CR[i])
+            try: OD_fix_tmp.append(OD_ACT_CL[2*i]-OD_ACT_CR[i])   # OD: CL0-CR0/ CL2-CR1 ....
             except: pass
-            try: OD_fix_tmp.append(OD_ACT_CL[2*(i+1)-1]-OD_ACT_CR[i])
+            try: OD_fix_tmp.append(OD_ACT_CL[2*i+1]-OD_ACT_CR[i])   # OD: CL1-CR0/ CL3-CR1 ....
             except: pass
-            try: OS_fix_tmp.append(OS_ACT_CR[i]-OS_ACT_CL[2*(i+1)-2])
+            try: OS_fix_tmp.append(OS_ACT_CR[i]-OS_ACT_CL[2*i])   # OS: CR0-CL0/ CR1-CL2 ....
             except: pass
-            try: OS_fix_tmp.append(OS_ACT_CR[i]-OS_ACT_CL[2*(i+1)-1])
+            try: OS_fix_tmp.append(OS_ACT_CR[i]-OS_ACT_CL[2*i+1])   # OS: CR0-CL1/ CR1-CL3 ....
             except: pass
             
-        OD_fix = stats.mode(np.array(OD_fix_tmp).astype(int),axis = 0)[0].reshape(-1)    # CL-CR
-        OS_fix = stats.mode(np.array(OS_fix_tmp).astype(int),axis = 0)[0].reshape(-1)     # CR-CL
+        OD_fix = stats.mode(np.array(np.round(OD_fix_tmp,0)).astype(int),axis = 0)[0].reshape(-1)    # CL-CR
+        OS_fix = stats.mode(np.array(np.round(OS_fix_tmp,0)).astype(int),axis = 0)[0].reshape(-1)     # CR-CL
         
+        # Transfer to PD unit
         try:
             OD_fix = np.append(nb.trans_PD(self.AL_OD,OD_fix[0:2],nb.CAL_VAL_OD), OD_fix[2])
-            OS_fix = np.append(nb.trans_PD(self.AL_OS,OS_fix[0:2],Neurobit.CAL_VAL_OS), OS_fix[2])
+            OS_fix = np.append(nb.trans_PD(self.AL_OS,OS_fix[0:2],nb.CAL_VAL_OS), OS_fix[2])
         except:
             print("No profile")
             
@@ -241,15 +237,15 @@ class ACT_Task(Neurobit):
             self.VoiceCommandFeatureExtraction()   
         plt.subplot(2,2,1)
         plt.title(self.ID)
-        plt.plot(self.OD[0,:]-np.nanmin(self.OD[0,:]))
-        plt.plot(self.OD[1,:]-np.nanmin(self.OD[1,:]))
+        plt.plot(self.OD[0,:]-np.nanmin(self.OD[0,:]), color ='r')
+        plt.plot(self.OD[1,:]-np.nanmin(self.OD[1,:]), color ='g')
         plt.hlines(self.OD_ACT[1][0]-np.nanmin(self.OD[0,:]),0,len(self.OD[1,:]), color ='r')# CL
         plt.hlines(self.OD_ACT[1][1]-np.nanmin(self.OD[1,:]),0,len(self.OD[1,:]), color ='g')# CL
         plt.hlines(self.OD_ACT[2][0]-np.nanmin(self.OD[0,:]),0,len(self.OD[1,:]), color ='r')# CR
         plt.hlines(self.OD_ACT[2][1]-np.nanmin(self.OD[1,:]),0,len(self.OD[1,:]), color ='g')# CR
         plt.subplot(2,2,2)
-        plt.plot(self.OS[0,:]-np.nanmin(self.OS[0,:]))
-        plt.plot(self.OS[1,:]-np.nanmin(self.OS[1,:]))
+        plt.plot(self.OS[0,:]-np.nanmin(self.OS[0,:]), color ='r')
+        plt.plot(self.OS[1,:]-np.nanmin(self.OS[1,:]), color ='g')
         plt.hlines(self.OS_ACT[1][0]-np.nanmin(self.OS[0,:]),0,len(self.OS[1,:]), color ='r')# CL
         plt.hlines(self.OS_ACT[1][1]-np.nanmin(self.OS[1,:]),0,len(self.OS[1,:]), color ='g')# CL
         plt.hlines(self.OS_ACT[2][0]-np.nanmin(self.OS[0,:]),0,len(self.OS[1,:]), color ='r')# CR

@@ -36,6 +36,9 @@ class CUT_Task(Neurobit):
         self.GetCommand()  
         
         self.GetEyePosition()  
+# =============================================================================
+#         self.Preprocessing()
+# =============================================================================
         #self.SeperateSession()              
         self.FeatureExtraction()  
         self.GetDiagnosis()  
@@ -45,40 +48,123 @@ class CUT_Task(Neurobit):
         self.DrawEyeTrack()  
         self.DrawQRCode()
     def FeatureExtraction(self):
-        OD = self.OD.astype('float'); OS = self.OS.astype('float')
-        OD_ACT = []; OS_ACT = [];       # all position in each CUT_TIME
-        for i in range(0,len(nb.CUT_TIME)):
-            temp = self.CmdTime[nb.CUT_TIME[i]]
-            delete = np.where(temp>len(OD[0])-1)[0]
-            if delete.any():
-                temp = np.delete(temp, delete)
-            if type(self.CmdTime[nb.CUT_TIME[i]]) == list:
-                OD_ACT_tmp = []; OS_ACT_tmp = [];
-                for temp in self.CmdTime[nb.CUT_TIME[i]]:
-                        OD_ACT_tmp.append(stats.mode(OD[:,temp].astype(int),axis = 1)[0].reshape(-1))
-                        OS_ACT_tmp.append(stats.mode(OS[:,temp].astype(int),axis = 1)[0].reshape(-1))
-                OD_ACT_tmp = np.array(OD_ACT_tmp)
-                OS_ACT_tmp = np.array(OS_ACT_tmp)
-                OD_ACT.append(np.round(stats.mode(OD_ACT_tmp.astype(int),axis = 1)[0][0].reshape(-1),2))
-                OS_ACT.append(np.round(stats.mode(OS_ACT_tmp.astype(int),axis = 1)[0][0].reshape(-1),2))
-            elif temp.any():                
-                OD_ACT.append(stats.mode(OD[:,temp].astype(int),axis = 1)[0].reshape(-1))
-                OS_ACT.append(stats.mode(OS[:,temp].astype(int),axis = 1)[0].reshape(-1))
+        def GetTrialCmd(i,eyePosition,ACT_Trial,act_time,CmdTime):
+            duration = int(2*24) # respond period = seconds*fps            
+            LT = 5  # Set default latency
+            CmdTmp = CmdTime[act_time];print(act_time, i)
+            Trial_trg_ind = np.where(np.diff(CmdTime[act_time]) > 5)[0]
+            start_ind = np.where(CmdTmp == i)[0][0]
+            end_ind = Trial_trg_ind[np.where(Trial_trg_ind>start_ind)[0]]                
+            if end_ind.any(): end_ind = end_ind[0]
+            else: end_ind = len(CmdTmp)-1                
+            # Find eyePosition inital respond point
+            baseline = np.nanmean(eyePosition[:2,CmdTmp[start_ind:start_ind+LT]],axis = 1).reshape(2,-1) # mean value in latency
+            slope = np.nansum(abs(eyePosition[:2,CmdTmp[start_ind:end_ind]]-baseline),axis=0)            # normalize eye position after latency
+            trg_ind = np.where(slope>2.5)[0]    # find differential more than 2.5 pixel
+            
+            if trg_ind.any(): 
+                trg_ind = CmdTmp[start_ind] + trg_ind[0]
+                ACT_Trial.append(np.nanmean(eyePosition[:,trg_ind:trg_ind+duration],axis = 1))
             else:
-                OD_ACT.append([np.nan, np.nan, np.nan])
-                OS_ACT.append([np.nan, np.nan, np.nan])
+                ACT_Trial.append(np.nanmean(eyePosition[:,CmdTmp],axis = 1)) 
+            i = CmdTmp[end_ind]+1
+            return ACT_Trial, i
+        OD = self.OD.astype('float'); OS = self.OS.astype('float')
+        OD_ACT = []; OS_ACT = [];       # all position in each ACT_TIME  
+        OD_ACT_CL = []; OS_ACT_CL = [];
+        OD_ACT_CR = []; OS_ACT_CR = [];
+        OD_ACT_UCL = []; OS_ACT_UCL = [];
+        OD_ACT_UCR = []; OS_ACT_UCR = [];
         
+        # find the trigger time stemp
+        O_trg_ind = np.where(np.diff(self.CmdTime['O_t']) > 5)[0]
+        
+        i = 0;      # read CmdTime
+        rd = 0;     # read O_trg_ind index
+        while(i < len(OD[0,:])):
+            if i in self.CmdTime['O_t']:
+                tmp = self.CmdTime['O_t']
+                if rd > 0 and rd < len(O_trg_ind):  # 2~(total session - 1)
+                    i = tmp[O_trg_ind[rd]]+1;        rd += 1
+                    continue
+                elif rd > 0:    # the last session
+                    i = self.CmdTime['O_t'][-1]+1;   rd += 1
+                    continue
+                OD_ACT.append(stats.mode(OD[:,tmp].astype(int),axis = 1)[0].reshape(-1))
+                OS_ACT.append(stats.mode(OS[:,tmp].astype(int),axis = 1)[0].reshape(-1))
+                
+                i = self.CmdTime['CL_t'][0]            
+                rd += 1
+                print("O_t",i)
+            elif i in self.CmdTime['CL_t']:
+                OD_ACT_CL,_ = GetTrialCmd(i,OD,OD_ACT_CL,'CL_t',self.CmdTime)
+                OS_ACT_CL,i = GetTrialCmd(i,OS,OS_ACT_CL,'CL_t',self.CmdTime)            
+            elif i in self.CmdTime['CR_t']:
+                OD_ACT_CR,_ = GetTrialCmd(i,OD,OD_ACT_CR,'CR_t',self.CmdTime)
+                OS_ACT_CR,i = GetTrialCmd(i,OS,OS_ACT_CR,'CR_t',self.CmdTime)  
+            elif i in self.CmdTime['UCL_t']:
+                OD_ACT_UCL,_ = GetTrialCmd(i,OD,OD_ACT_UCL,'UCL_t',self.CmdTime)
+                OS_ACT_UCL,i = GetTrialCmd(i,OS,OS_ACT_UCL,'UCL_t',self.CmdTime)
+            elif i in self.CmdTime['UCR_t']:
+                OD_ACT_UCR,_ = GetTrialCmd(i,OD,OD_ACT_UCR,'UCR_t',self.CmdTime)
+                OS_ACT_UCR,i = GetTrialCmd(i,OS,OS_ACT_UCR,'UCR_t',self.CmdTime)
+            else:
+                i+=1
+        OD_ACT_CL_n = stats.mode(OD_ACT_CL,axis = 0)[0].reshape(-1)
+        OS_ACT_CL_n = stats.mode(OS_ACT_CL,axis = 0)[0].reshape(-1)
+        OD_ACT_CR_n = stats.mode(OD_ACT_CR,axis = 0)[0].reshape(-1)
+        OS_ACT_CR_n = stats.mode(OS_ACT_CR,axis = 0)[0].reshape(-1)
+        
+        OD_ACT_UCL_n = stats.mode(OD_ACT_UCL,axis = 0)[0].reshape(-1)
+        OS_ACT_UCL_n = stats.mode(OS_ACT_UCL,axis = 0)[0].reshape(-1)
+        OD_ACT_UCR_n = stats.mode(OD_ACT_UCR,axis = 0)[0].reshape(-1)
+        OS_ACT_UCR_n = stats.mode(OS_ACT_UCR,axis = 0)[0].reshape(-1)
         # ET、XT angle
-        OD_ACT = np.array(np.round(OD_ACT,2))
-        OS_ACT = np.array(np.round(OS_ACT,2))
-        self.OD_ACT = OD_ACT
-        self.OS_ACT = OS_ACT
-        # Fixation_eye - Uncovered_eye
-        OS_phoria = OS_ACT[2]-OS_ACT[1]    # UCL-CL
-        OD_phoria = OD_ACT[4]-OD_ACT[3]    # UCR-CR
+        OD_ACT = np.insert(OD_ACT,1,OD_ACT_CL_n, axis=0)
+        OD_ACT = np.insert(OD_ACT,2,OD_ACT_UCL_n, axis=0)
+        OD_ACT = np.insert(OD_ACT,3,OD_ACT_CR_n, axis=0)
+        OD_ACT = np.insert(OD_ACT,4,OD_ACT_UCR_n, axis=0)
         
-        OD_fix = OD_ACT[1]-OD_ACT[3]    # CL-CR
-        OS_fix = OS_ACT[3]-OS_ACT[1]    # CR-CL
+        OS_ACT = np.insert(OS_ACT,1,OS_ACT_CL_n, axis=0)
+        OS_ACT = np.insert(OS_ACT,2,OS_ACT_UCL_n, axis=0)
+        OS_ACT = np.insert(OS_ACT,3,OS_ACT_CR_n, axis=0)
+        OS_ACT = np.insert(OS_ACT,4,OS_ACT_UCR_n, axis=0)
+        
+        self.OD_ACT = np.array(np.round(OD_ACT,2))
+        self.OS_ACT = np.array(np.round(OS_ACT,2))   
+        
+        # Fixation_eye - Covered_eye
+        OD_fix_tmp = []; OS_fix_tmp = []
+        OD_phoria_tmp = []; OS_phoria_tmp = []
+        for i in range(0,len(OD_ACT_CR)):
+            try: OD_phoria_tmp.append(OD_ACT_UCR[i]-OD_ACT_CR[i])   # UCR-CR
+            except: pass
+            try: OS_phoria_tmp.append(OS_ACT_UCL[i]-OS_ACT_CL[i])   # UCL-CL
+            except: pass
+            try: OD_fix_tmp.append(OD_ACT_CL[i]-OD_ACT_CR[i])   # CL-CR
+            except: pass
+            try: OS_fix_tmp.append(OS_ACT_CR[i]-OS_ACT_CL[i])   # CR-CL
+            except: pass
+            
+        OD_fix = stats.mode(np.array(np.round(OD_fix_tmp,0)).astype(int),axis = 0)[0].reshape(-1)    
+        OS_fix = stats.mode(np.array(np.round(OS_fix_tmp,0)).astype(int),axis = 0)[0].reshape(-1)     
+        OD_phoria = stats.mode(np.array(np.round(OD_phoria_tmp,0)).astype(int),axis = 0)[0].reshape(-1)    
+        OS_phoria = stats.mode(np.array(np.round(OS_phoria_tmp,0)).astype(int),axis = 0)[0].reshape(-1)     
+        
+        # Transfer to PD unit
+        try:
+            OD_fix = np.append(nb.trans_PD(self.AL_OD,OD_fix[0:2],nb.CAL_VAL_OD), OD_fix[2])
+            OS_fix = np.append(nb.trans_PD(self.AL_OS,OS_fix[0:2],nb.CAL_VAL_OS), OS_fix[2])
+            
+            OS_phoria = np.append(nb.trans_PD(self.AL_OS,OS_phoria[0:2],nb.CAL_VAL_OS), OS_phoria[2])
+            OD_phoria = np.append(nb.trans_PD(self.AL_OD,OD_phoria[0:2],nb.CAL_VAL_OD), OD_phoria[2])
+        except:
+            print("No profile")
+            
+        self.OD_fix = OD_fix        # one position in each CUT_TIME
+        self.OS_fix = OS_fix
+        self.OD_phoria = OD_phoria        # one position in each CUT_TIME
+        self.OS_phoria = OS_phoria
         
         plt.subplot(2,2,1)
         plt.plot(self.OD[0,:]-min(self.OD[0,:]))
@@ -110,18 +196,6 @@ class CUT_Task(Neurobit):
         plt.hlines(OS_ACT[3][1]-min(self.OS[1,:]),0,len(self.OS[1,:]), color ='g')# UCR
         plt.show()
         
-        try:
-            OD_fix = np.append(nb.trans_PD(self.AL_OD,OD_fix[0:2],nb.CAL_VAL_OD), OD_fix[2])
-            OS_fix = np.append(nb.trans_PD(self.AL_OS,OS_fix[0:2],nb.CAL_VAL_OS), OS_fix[2])
-            
-            OS_phoria = np.append(nb.trans_PD(self.AL_OS,OS_phoria[0:2],nb.CAL_VAL_OS), OS_phoria[2])
-            OD_phoria = np.append(nb.trans_PD(self.AL_OD,OD_phoria[0:2],nb.CAL_VAL_OD), OD_phoria[2])
-        except:
-            print("No profile")
-        self.OD_fix = OD_fix        # one position in each CUT_TIME
-        self.OS_fix = OS_fix
-        self.OD_phoria = OD_phoria        # one position in each CUT_TIME
-        self.OS_phoria = OS_phoria
     def GetDiagnosis(self):
         OD_fix = self.OD_fix; OS_fix = self.OS_fix
         OD_phoria = self.OD_phoria; OS_phoria = self.OS_phoria

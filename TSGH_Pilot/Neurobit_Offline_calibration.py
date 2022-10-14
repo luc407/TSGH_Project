@@ -5,7 +5,7 @@ Created on Thu May 19 02:26:10 2022
 @author: luc40
 """
 import os
-import Neurobit_Lib_pilot
+from Neurobit import Neurobit
 import tkinter as tk
 from calibration import CalibSystem
 
@@ -13,20 +13,22 @@ from calibration import CalibSystem
 
 main_path = os.getcwd()
 Fail = []
-Subject = Neurobit_Lib_pilot.Neurobit()
+Subject = Neurobit()
 
 if __name__== '__main__':    
-    main_path = "E:\\Result\\NS01_1_tsgh_flight\\Release2.02\\Result"
+    Neurobit.Release_ver = "Release2.02_pilot"
+    main_path = "E:\\Result\\"+ Neurobit.Release_ver +"\\Result"
+    save_path = os.getcwd()+"\\RESULT\\Calibration"
     folderList = Subject.GetFolderPath(main_path)
-    for folder1 in folderList[1:]:
+    for folder1 in folderList:
         sub_folderList = Subject.GetFolderPath(folder1)
         for folder2 in sub_folderList:
             IsCalibrated = False
             csv_files = Subject.GetSubjectFiles(folder2)        
             for csv_path in csv_files:
-                write_path = os.path.join(Subject.save_csv_path,csv_path.split("\\")[-2]+"\\cal_param.txt")
-                if not os.path.isdir(write_path.replace("\\cal_param.txt","")):
-                    os.makedirs(write_path.replace("\\cal_param.txt",""))
+                write_path = os.path.join(save_path,csv_path.split("\\")[-2]+"_cal_param.txt")
+                if not os.path.isdir(save_path):
+                    os.makedirs(save_path)
                 if not IsCalibrated:
                     root = tk.Tk()
                     my_gui = CalibSystem(root, csv_path)

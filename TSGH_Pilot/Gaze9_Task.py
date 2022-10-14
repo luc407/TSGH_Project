@@ -43,6 +43,9 @@ class Gaze9_Task(Neurobit):
         self.GetCommand()   
         
         self.GetEyePosition()
+# =============================================================================
+#         self.Preprocessing()
+# =============================================================================
         #self.SeperateSession()                
         if Finished_ACT: self.FeatureExtraction(ACT_Task) 
         else: self.FeatureExtraction() 
@@ -78,125 +81,146 @@ class Gaze9_Task(Neurobit):
             exec('cov_non = np.where(cover['+nb.GAZE_9_TIME[i]+'] >= 0)[0]')
             exec('self.CmdTime[nb.GAZE_9_TIME[i]] = '+nb.GAZE_9_TIME[i]+'[cov_non]')
     def FeatureExtraction(self,*args):
+        def GetTrialCmd(i,eyePosition,ACT_Trial,act_time,CmdTime,AdjCmdTime):
+            ACT_Trial = np.array(ACT_Trial)
+            duration = int(1.5*24) # respond period = seconds*fps            
+            LT = 10  # Set default latency
+            CmdTmp = CmdTime[act_time];print(act_time,i)
+            Trial_trg_ind = np.where(np.diff(CmdTime[act_time]) > 5)[0]
+            start_ind = np.where(CmdTmp == i)[0][0]
+            end_ind = Trial_trg_ind[np.where(Trial_trg_ind>start_ind)[0]]                
+            if end_ind.any(): end_ind = end_ind[0]
+            else: end_ind = len(CmdTmp)-1   
+            print(CmdTmp[end_ind])             
+            # Find eyePosition inital respond point
+            baseline = np.nanmean(eyePosition[:2,CmdTmp[start_ind:start_ind+LT]],axis = 1).reshape(2,-1) # mean value in latency
+            slope = np.nansum(abs(eyePosition[:2,CmdTmp[start_ind]:CmdTmp[start_ind]+duration*2]-baseline),axis=0)            # normalize eye position after latency
+            trg_ind = np.where(slope>20)[0]    # find differential more than 2.5 pixel
+            if trg_ind.any(): 
+                trg_eye_ind = CmdTmp[start_ind] + trg_ind[0]
+                plt.plot(eyePosition[0,trg_eye_ind:trg_eye_ind+duration])
+                plt.plot(eyePosition[1,trg_eye_ind:trg_eye_ind+duration])
+                plt.show()
+                if ACT_Trial.any():
+                    ACT_Trial = np.append(ACT_Trial, eyePosition[:,trg_eye_ind:trg_eye_ind+duration],axis = 1)
+                    AdjCmdTime[act_time] = np.append(AdjCmdTime[act_time],np.array(range(trg_eye_ind,trg_eye_ind+duration)))
+                else:
+                    ACT_Trial = eyePosition[:,trg_eye_ind:trg_eye_ind+duration]
+                    AdjCmdTime[act_time] = np.array(range(trg_eye_ind,trg_eye_ind+duration))
+            else:
+                if ACT_Trial.any():
+                    ACT_Trial = np.append(ACT_Trial, eyePosition[:,CmdTmp[start_ind:end_ind]],axis = 1) 
+                    AdjCmdTime[act_time] = np.append(AdjCmdTime[act_time],CmdTmp[start_ind:end_ind])
+                else:
+                    ACT_Trial = eyePosition[:,CmdTmp]
+                    AdjCmdTime[act_time] = CmdTmp            
+            i = CmdTmp[end_ind]+1            
+            return ACT_Trial, AdjCmdTime, i
+        OD = self.OD.astype('float'); OS = self.OS.astype('float')
+        
+        OD_Gaze9_F = []; OS_Gaze9_F = [];
+        OD_Gaze9_L = []; OS_Gaze9_L = [];
+        OD_Gaze9_R = []; OS_Gaze9_R = [];
+        OD_Gaze9_U = []; OS_Gaze9_U = [];
+        OD_Gaze9_D = []; OS_Gaze9_D = [];
+        OD_Gaze9_LU = []; OS_Gaze9_LU = [];
+        OD_Gaze9_RU = []; OS_Gaze9_RU = [];
+        OD_Gaze9_LD = []; OS_Gaze9_LD = [];
+        OD_Gaze9_RD = []; OS_Gaze9_RD = [];
+        
+        AdjCmdTime = dict()
+                
+        i = 0;      # read CmdTime
+        rd = 0;     # read O_trg_ind index
+        rd_ucr = 0  # read UCR_trg_ind index        
+        while(i < len(OD[0,:])):
+            if i in self.CmdTime['F']:
+                OD_Gaze9_F,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_F,'F',self.CmdTime,AdjCmdTime)
+                OS_Gaze9_F,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_F,'F',self.CmdTime,AdjCmdTime) 
+            elif i in self.CmdTime['L']:
+                OD_Gaze9_L,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_L,'L',self.CmdTime,AdjCmdTime)
+                OS_Gaze9_L,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_L,'L',self.CmdTime,AdjCmdTime)            
+            elif i in self.CmdTime['R']:
+                OD_Gaze9_R,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_R,'R',self.CmdTime,AdjCmdTime)
+                OS_Gaze9_R,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_R,'R',self.CmdTime,AdjCmdTime)  
+            elif i in self.CmdTime['U']:
+                OD_Gaze9_U,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_U,'U',self.CmdTime,AdjCmdTime)
+                OS_Gaze9_U,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_U,'U',self.CmdTime,AdjCmdTime)
+            elif i in self.CmdTime['D']:
+                OD_Gaze9_D,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_D,'D',self.CmdTime,AdjCmdTime)
+                OS_Gaze9_D,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_D,'D',self.CmdTime,AdjCmdTime)
+            elif i in self.CmdTime['LU']:
+                OD_Gaze9_LU,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_LU,'LU',self.CmdTime,AdjCmdTime)
+                OS_Gaze9_LU,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_LU,'LU',self.CmdTime,AdjCmdTime)            
+            elif i in self.CmdTime['RU']:
+                OD_Gaze9_RU,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_RU,'RU',self.CmdTime,AdjCmdTime)
+                OS_Gaze9_RU,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_RU,'RU',self.CmdTime,AdjCmdTime) 
+            elif i in self.CmdTime['LD']:
+                OD_Gaze9_LD,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_LD,'LD',self.CmdTime,AdjCmdTime)
+                OS_Gaze9_LD,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_LD,'LD',self.CmdTime,AdjCmdTime)            
+            elif i in self.CmdTime['RD']:
+                OD_Gaze9_RD,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_RD,'RD',self.CmdTime,AdjCmdTime)
+                OS_Gaze9_RD,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_RD,'RD',self.CmdTime,AdjCmdTime) 
+            else:
+                i+=1
+        self.CmdTime = AdjCmdTime
         #GAZE_9_TIME     = ['F','U','D','R','L','RU','LU','RD','LD']
         OD = self.OD; OS = self.OS; Finished_ACT = False
         Gaze_9_OD = []; Gaze_9_OS = [];       # all position in each ACT_TIME
         NeurobitDxDev_H = list();NeurobitDxDev_V = list()
         for i in range(0,len(nb.GAZE_9_TIME)):
-            temp = self.CmdTime[nb.GAZE_9_TIME[i]]
-            delete = np.where(temp>len(OD[0])-1)[0]
-            if delete.any():
-                temp = np.delete(temp, delete)
-            if type(self.CmdTime[nb.GAZE_9_TIME[i]]) == list:
-                OD_ACT_tmp = []; OS_ACT_tmp = [];
-                for temp in self.CmdTime[nb.GAZE_9_TIME[i]]:
-                    if i == 0: 
-                        OD_ACT_tmp.append([np.nanpercentile(OD[0,temp],50),
-                                           np.nanpercentile(OD[1,temp],80),
-                                           np.nanpercentile(OD[2,temp],50)])
-                        OS_ACT_tmp.append([np.nanpercentile(OS[0,temp],50),
-                                           np.nanpercentile(OS[1,temp],80),
-                                           np.nanpercentile(OS[2,temp],50)])
-                    elif i == 1: 
-                        OD_ACT_tmp.append(np.nanpercentile(OD[0,temp],50,axis = 1))
-                        OS_ACT_tmp.append(np.nanpercentile(OS[0,temp],50,axis = 1))
-                    elif i == 2:
-                        OD_ACT_tmp.append([np.nanpercentile(OD[0,temp],80),
-                                           np.nanpercentile(OD[1,temp],50),
-                                           np.nanpercentile(OD[2,temp],50)])
-                        OS_ACT_tmp.append([np.nanpercentile(OS[0,temp],80),
-                                           np.nanpercentile(OS[1,temp],50),
-                                           np.nanpercentile(OS[2,temp],50)])
-                    elif i == 3:
-                        OD_ACT_tmp.append(np.nanpercentile(OD[0,temp],80,axis = 1))
-                        OS_ACT_tmp.append(np.nanpercentile(OS[0,temp],80,axis = 1))
-                    elif i == 4:
-                        OD_ACT_tmp.append([np.nanpercentile(OD[0,temp],80),
-                                           np.nanpercentile(OD[1,temp],20),
-                                           np.nanpercentile(OD[2,temp],50)])
-                        OS_ACT_tmp.append([np.nanpercentile(OS[0,temp],80),
-                                           np.nanpercentile(OS[1,temp],20),
-                                           np.nanpercentile(OS[2,temp],50)])
-                    elif i == 5:
-                        OD_ACT_tmp.append([np.nanpercentile(OD[0,temp],20),
-                                           np.nanpercentile(OD[1,temp],50),
-                                           np.nanpercentile(OD[2,temp],50)])
-                        OS_ACT_tmp.append([np.nanpercentile(OS[0,temp],20),
-                                           np.nanpercentile(OS[1,temp],50),
-                                           np.nanpercentile(OS[2,temp],50)])
-                    elif i == 6:
-                        OD_ACT_tmp.append([np.nanpercentile(OD[0,temp],20),
-                                           np.nanpercentile(OD[1,temp],80),
-                                           np.nanpercentile(OD[2,temp],50)])
-                        OS_ACT_tmp.append([np.nanpercentile(OS[0,temp],20),
-                                           np.nanpercentile(OS[1,temp],80),
-                                           np.nanpercentile(OS[2,temp],50)])
-                    elif i == 7:
-                        OD_ACT_tmp.append(np.nanpercentile(OD[0,temp],20,axis = 1))
-                        OS_ACT_tmp.append(np.nanpercentile(OS[0,temp],20,axis = 1))
-                    elif i == 8:
-                        OD_ACT_tmp.append([np.nanpercentile(OD[0,temp],50),
-                                           np.nanpercentile(OD[1,temp],20),
-                                           np.nanpercentile(OD[2,temp],50)])
-                        OS_ACT_tmp.append([np.nanpercentile(OS[0,temp],50),
-                                           np.nanpercentile(OS[1,temp],20),
-                                           np.nanpercentile(OS[2,temp],50)])
-                OD_ACT_tmp = np.array(OD_ACT_tmp)
-                OS_ACT_tmp = np.array(OS_ACT_tmp)
-                Gaze_9_OD.append(np.round(stats.mode(OD_ACT_tmp.astype(int),axis = 1)[0][0].reshape(-1),2))
-                Gaze_9_OS.append(np.round(stats.mode(OS_ACT_tmp.astype(int),axis = 1)[0][0].reshape(-1),2))
-            elif temp.any():                
-                if i == 0: 
-                    Gaze_9_OD.append([np.nanpercentile(OD[0,temp],50),
-                                       np.nanpercentile(OD[1,temp],80),
-                                       np.nanpercentile(OD[2,temp],50)])
-                    Gaze_9_OS.append([np.nanpercentile(OS[0,temp],50),
-                                       np.nanpercentile(OS[1,temp],80),
-                                       np.nanpercentile(OS[2,temp],50)])
-                elif i == 1: 
-                    Gaze_9_OD.append(np.nanpercentile(OD[:,temp],50,axis = 1))
-                    Gaze_9_OS.append(np.nanpercentile(OS[:,temp],50,axis = 1))
-                elif i == 2:
-                    Gaze_9_OD.append([np.nanpercentile(OD[0,temp],80),
-                                       np.nanpercentile(OD[1,temp],50),
-                                       np.nanpercentile(OD[2,temp],50)])
-                    Gaze_9_OS.append([np.nanpercentile(OS[0,temp],80),
-                                       np.nanpercentile(OS[1,temp],50),
-                                       np.nanpercentile(OS[2,temp],50)])
-                elif i == 3:
-                    Gaze_9_OD.append(np.nanpercentile(OD[:,temp],80,axis = 1))
-                    Gaze_9_OS.append(np.nanpercentile(OS[:,temp],80,axis = 1))
-                elif i == 4:
-                    Gaze_9_OD.append([np.nanpercentile(OD[0,temp],80),
-                                       np.nanpercentile(OD[1,temp],20),
-                                       np.nanpercentile(OD[2,temp],50)])
-                    Gaze_9_OS.append([np.nanpercentile(OS[0,temp],80),
-                                       np.nanpercentile(OS[1,temp],20),
-                                       np.nanpercentile(OS[2,temp],50)])
-                elif i == 5:
-                    Gaze_9_OD.append([np.nanpercentile(OD[0,temp],20),
-                                       np.nanpercentile(OD[1,temp],50),
-                                       np.nanpercentile(OD[2,temp],50)])
-                    Gaze_9_OS.append([np.nanpercentile(OS[0,temp],20),
-                                       np.nanpercentile(OS[1,temp],50),
-                                       np.nanpercentile(OS[2,temp],50)])
-                elif i == 6:
-                    Gaze_9_OD.append([np.nanpercentile(OD[0,temp],20),
-                                       np.nanpercentile(OD[1,temp],80),
-                                       np.nanpercentile(OD[2,temp],50)])
-                    Gaze_9_OS.append([np.nanpercentile(OS[0,temp],20),
-                                       np.nanpercentile(OS[1,temp],80),
-                                       np.nanpercentile(OS[2,temp],50)])
-                elif i == 7:
-                    Gaze_9_OD.append(np.nanpercentile(OD[:,temp],20,axis = 1))
-                    Gaze_9_OS.append(np.nanpercentile(OS[:,temp],20,axis = 1))
-                elif i == 8:
-                    Gaze_9_OD.append([np.nanpercentile(OD[0,temp],50),
-                                       np.nanpercentile(OD[1,temp],20),
-                                       np.nanpercentile(OD[2,temp],50)])
-                    Gaze_9_OS.append([np.nanpercentile(OS[0,temp],50),
-                                       np.nanpercentile(OS[1,temp],20),
-                                       np.nanpercentile(OS[2,temp],50)])
+            if self.CmdTime[nb.GAZE_9_TIME[i]].any():
+                if nb.GAZE_9_TIME[i] == 'D': 
+                    Gaze_9_OD.append([np.nanpercentile(OD_Gaze9_D[0,:],50),
+                                       np.nanpercentile(OD_Gaze9_D[1,:],80),
+                                       np.nanpercentile(OD_Gaze9_D[2,:],50)])
+                    Gaze_9_OS.append([np.nanpercentile(OS_Gaze9_D[0,:],50),
+                                       np.nanpercentile(OS_Gaze9_D[1,:],80),
+                                       np.nanpercentile(OS_Gaze9_D[2,:],50)])
+                elif nb.GAZE_9_TIME[i] == 'F': 
+                    Gaze_9_OD.append(np.nanpercentile(OD_Gaze9_F,50,axis = 1))
+                    Gaze_9_OS.append(np.nanpercentile(OS_Gaze9_F,50,axis = 1))
+                elif nb.GAZE_9_TIME[i] == 'L':
+                    Gaze_9_OD.append([np.nanpercentile(OD_Gaze9_L[0,:],80),
+                                       np.nanpercentile(OD_Gaze9_L[1,:],50),
+                                       np.nanpercentile(OD_Gaze9_L[2,:],50)])
+                    Gaze_9_OS.append([np.nanpercentile(OS_Gaze9_L[0,:],80),
+                                       np.nanpercentile(OS_Gaze9_L[1,:],50),
+                                       np.nanpercentile(OS_Gaze9_L[2,:],50)])
+                elif nb.GAZE_9_TIME[i] == 'LD':
+                    Gaze_9_OD.append(np.nanpercentile(OD_Gaze9_LD,80,axis = 1))
+                    Gaze_9_OS.append(np.nanpercentile(OS_Gaze9_LD,80,axis = 1))
+                elif nb.GAZE_9_TIME[i] == 'LU':
+                    Gaze_9_OD.append([np.nanpercentile(OD_Gaze9_LU[0,:],80),
+                                       np.nanpercentile(OD_Gaze9_LU[1,:],20),
+                                       np.nanpercentile(OD_Gaze9_LU[2,:],50)])
+                    Gaze_9_OS.append([np.nanpercentile(OS_Gaze9_LU[0,:],80),
+                                       np.nanpercentile(OS_Gaze9_LU[1,:],20),
+                                       np.nanpercentile(OS_Gaze9_LU[2,:],50)])
+                elif nb.GAZE_9_TIME[i] == 'R':
+                    Gaze_9_OD.append([np.nanpercentile(OD_Gaze9_R[0,:],20),
+                                       np.nanpercentile(OD_Gaze9_R[1,:],50),
+                                       np.nanpercentile(OD_Gaze9_R[2,:],50)])
+                    Gaze_9_OS.append([np.nanpercentile(OS_Gaze9_R[0,:],20),
+                                       np.nanpercentile(OS_Gaze9_R[1,:],50),
+                                       np.nanpercentile(OS_Gaze9_R[2,:],50)])
+                elif nb.GAZE_9_TIME[i] == 'RD':
+                    Gaze_9_OD.append([np.nanpercentile(OD_Gaze9_RD[0,:],20),
+                                       np.nanpercentile(OD_Gaze9_RD[1,:],80),
+                                       np.nanpercentile(OD_Gaze9_RD[2,:],50)])
+                    Gaze_9_OS.append([np.nanpercentile(OS_Gaze9_RD[0,:],20),
+                                       np.nanpercentile(OS_Gaze9_RD[1,:],80),
+                                       np.nanpercentile(OS_Gaze9_RD[2,:],50)])
+                elif nb.GAZE_9_TIME[i] == 'RU':
+                    Gaze_9_OD.append(np.nanpercentile(OD_Gaze9_RU,20,axis = 1))
+                    Gaze_9_OS.append(np.nanpercentile(OS_Gaze9_RU,20,axis = 1))
+                elif nb.GAZE_9_TIME[i] == 'U':
+                    Gaze_9_OD.append([np.nanpercentile(OD_Gaze9_U[0,:],50),
+                                       np.nanpercentile(OD_Gaze9_U[1,:],20),
+                                       np.nanpercentile(OD_Gaze9_U[2,:],50)])
+                    Gaze_9_OS.append([np.nanpercentile(OS_Gaze9_U[0,:],50),
+                                       np.nanpercentile(OS_Gaze9_U[1,:],20),
+                                       np.nanpercentile(OS_Gaze9_U[2,:],50)])
             else:
                 Gaze_9_OD.append([np.nan, np.nan, np.nan])
                 Gaze_9_OS.append([np.nan, np.nan, np.nan])

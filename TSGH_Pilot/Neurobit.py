@@ -135,7 +135,24 @@ def DrawEyePosition(frame, eyes, OD_p, OS_p):
         cv2.circle(frame,(int(OS_p[0]),int(OS_p[1])),
                    int(OS_p[2]),
                    (255,255,255),2)
-        
+
+def nan_helper(y):
+    """Helper to handle indices and logical indices of NaNs.
+
+    Input:
+        - y, 1d numpy array with possible NaNs
+    Output:
+        - nans, logical indices of NaNs
+        - index, a function, with signature indices= index(logical_indices),
+          to convert logical indices of NaNs to 'equivalent' indices
+    Example:
+        >>> # linear interpolation of NaNs
+        >>> nans, x= nan_helper(y)
+        >>> y[nans]= np.interp(x(nans), x(~nans), y[~nans])
+    """
+
+    return np.isnan(y), lambda z: z.nonzero()[0]
+
 class ACT_Save(object):
     _ACT_dx = {'ID':[],
           'H_Dx':[],
@@ -166,8 +183,8 @@ class CUT_Save(object):
     
 class Neurobit():
     def __init__(self):
-        self.version = '2.8'
-        self.version_csv = '2.8'
+        self.version = '2.9'
+        self.version_csv = '2.9'
         self.task = str("Subject")
         self.session = []
         self.major_path = os.getcwd()
@@ -228,7 +245,7 @@ class Neurobit():
         ret, frame = cap.read()
         height = frame.shape[0]
         width = frame.shape[1]
-        cal_read_path = os.path.join(self.save_csv_path,self.save_MainPath.split("\\")[-1]+"\\cal_param.txt")
+        cal_read_path = os.path.join(os.getcwd()+"\\RESULT\\Calibration",self.FolderName+"_cal_param.txt")
         f = open(cal_read_path)
         text = f.readlines()
         OD_x = int(text[2].replace("\n","").split(" ")[0])
@@ -407,18 +424,38 @@ class Neurobit():
         plt.plot(self.OS[0,:])
         plt.plot(self.OS[1,:])
         plt.show()
-        win = 15      
+        
+        win = 15        # window 
+        # remove outlier
         low = np.nanpercentile(self.OD,30,axis=1)
         rm = np.logical_or(abs(self.OD[0,:]-low[0]) > 80, abs(self.OD[1,:]-low[1]) > 80)
-        self.OD[:,rm] = np.full([3,len(self.OD[0,rm])],np.nan)
-        
+        self.OD[:,rm] = np.full([3,len(self.OD[0,rm])],np.nan)        
         low = np.nanpercentile(self.OS,30,axis=1)
         rm = np.logical_or(abs(self.OS[0,:]-low[0]) > 80, abs(self.OS[1,:]-low[1]) > 80)
         self.OS[:,rm] = np.full([3,len(self.OS[0,rm])],np.nan)
         
+        # median moving window
         OD_temp = self.OD; OS_temp = self.OS;
         for i in range(win,(len(self.OD[0,:])-win)):
             if not np.isnan(self.OD[0,i]): OD_temp[:,i] = np.nanmedian(self.OD[:,i-win:i+win],axis = 1)
             if not np.isnan(self.OS[0,i]): OS_temp[:,i] = np.nanmedian(self.OS[:,i-win:i+win],axis = 1)
+        nans, x= nan_helper(OD_temp[0,:])
+        OD_temp[0,nans]= np.interp(x(nans), x(~nans), OD_temp[0,~nans])
+        
+        nans, x= nan_helper(OD_temp[1,:])
+        OD_temp[1,nans]= np.interp(x(nans), x(~nans), OD_temp[1,~nans])
+        
+        nans, x= nan_helper(OD_temp[2,:])
+        OD_temp[2,nans]= np.interp(x(nans), x(~nans), OD_temp[2,~nans])
+        
+        nans, x= nan_helper(OS_temp[0,:])
+        OS_temp[0,nans]= np.interp(x(nans), x(~nans), OS_temp[0,~nans])
+        
+        nans, x= nan_helper(OS_temp[1,:])
+        OS_temp[1,nans]= np.interp(x(nans), x(~nans), OS_temp[1,~nans])
+        
+        nans, x= nan_helper(OS_temp[2,:])
+        OS_temp[2,nans]= np.interp(x(nans), x(~nans), OS_temp[2,~nans])
+        
         self.OD = OD_temp
         self.OS = OS_temp

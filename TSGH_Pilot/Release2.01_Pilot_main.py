@@ -26,10 +26,11 @@ Fail = []
 Subject = Neurobit()
             
 if __name__== '__main__':    
-    main_path = "E:\\Result\\Release2.01_pilot\\Result"
-    Subject.DB_path = "E:\\Result\\Release2.01_pilot"
+    Neurobit.Release_ver = "Release2.02_pilot"
+    main_path = "E:\\Result\\"+ Neurobit.Release_ver +"\\Result"
+    Subject.DB_path = "E:\\Result\\"+ Neurobit.Release_ver
     folderList = Subject.GetFolderPath(main_path)
-    for folder1 in folderList[1:]:
+    for folder1 in folderList:
         try: del ACT_task
         except: pass
         try: del Gaze9_task
