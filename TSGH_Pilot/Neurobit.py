@@ -155,6 +155,7 @@ def nan_helper(y):
 
 class ACT_Save(object):
     _ACT_dx = {'ID':[],
+          'Date':[],
           'H_Dx':[],
           'H_Dev':[],
           'H_type':[],
@@ -163,7 +164,7 @@ class ACT_Save(object):
           }
     
 class Gaze9_Save(object):
-    _Gaze9_dx = {'ID':[]}
+    _Gaze9_dx = {'ID':[],'Date':[]}
     for i in range(0,len(GAZE_9_TIME)):
         _Gaze9_dx[GAZE_9_TIME[i]+'_OD_H_Dev'] = []
         _Gaze9_dx[GAZE_9_TIME[i]+'_OS_H_Dev'] = []
@@ -174,6 +175,7 @@ class Gaze9_Save(object):
     
 class CUT_Save(object):
     _CUT_dx = {'ID':[],
+               'Date':[],
           'H_Dx':[],
           'H_Dev':[],
           'H_type':[],
@@ -184,12 +186,10 @@ class CUT_Save(object):
 class Neurobit():
     def __init__(self):
         self.version = '2.9'
-        self.version_csv = '2.9'
         self.task = str("Subject")
         self.session = []
         self.major_path = os.getcwd()
         self.save_path = os.getcwd()+"\\RESULT\\Version"+self.version
-        self.save_csv_path = os.getcwd()+"\\RESULT\\Version"+self.version_csv
         self.saveVideo_path = []
         self.DB_path = []
         self.CmdTime = []
@@ -426,36 +426,40 @@ class Neurobit():
         plt.show()
         
         win = 15        # window 
-        # remove outlier
-        low = np.nanpercentile(self.OD,30,axis=1)
-        rm = np.logical_or(abs(self.OD[0,:]-low[0]) > 80, abs(self.OD[1,:]-low[1]) > 80)
-        self.OD[:,rm] = np.full([3,len(self.OD[0,rm])],np.nan)        
-        low = np.nanpercentile(self.OS,30,axis=1)
-        rm = np.logical_or(abs(self.OS[0,:]-low[0]) > 80, abs(self.OS[1,:]-low[1]) > 80)
-        self.OS[:,rm] = np.full([3,len(self.OS[0,rm])],np.nan)
+# =============================================================================
+#         # remove outlier
+#         low = np.nanpercentile(self.OD,30,axis=1)
+#         rm = np.logical_or(abs(self.OD[0,:]-low[0]) > 80, abs(self.OD[1,:]-low[1]) > 80)
+#         self.OD[:,rm] = np.full([3,len(self.OD[0,rm])],np.nan)        
+#         low = np.nanpercentile(self.OS,30,axis=1)
+#         rm = np.logical_or(abs(self.OS[0,:]-low[0]) > 80, abs(self.OS[1,:]-low[1]) > 80)
+#         self.OS[:,rm] = np.full([3,len(self.OS[0,rm])],np.nan)
+# =============================================================================
         
         # median moving window
         OD_temp = self.OD; OS_temp = self.OS;
         for i in range(win,(len(self.OD[0,:])-win)):
             if not np.isnan(self.OD[0,i]): OD_temp[:,i] = np.nanmedian(self.OD[:,i-win:i+win],axis = 1)
             if not np.isnan(self.OS[0,i]): OS_temp[:,i] = np.nanmedian(self.OS[:,i-win:i+win],axis = 1)
-        nans, x= nan_helper(OD_temp[0,:])
-        OD_temp[0,nans]= np.interp(x(nans), x(~nans), OD_temp[0,~nans])
-        
-        nans, x= nan_helper(OD_temp[1,:])
-        OD_temp[1,nans]= np.interp(x(nans), x(~nans), OD_temp[1,~nans])
-        
-        nans, x= nan_helper(OD_temp[2,:])
-        OD_temp[2,nans]= np.interp(x(nans), x(~nans), OD_temp[2,~nans])
-        
-        nans, x= nan_helper(OS_temp[0,:])
-        OS_temp[0,nans]= np.interp(x(nans), x(~nans), OS_temp[0,~nans])
-        
-        nans, x= nan_helper(OS_temp[1,:])
-        OS_temp[1,nans]= np.interp(x(nans), x(~nans), OS_temp[1,~nans])
-        
-        nans, x= nan_helper(OS_temp[2,:])
-        OS_temp[2,nans]= np.interp(x(nans), x(~nans), OS_temp[2,~nans])
+# =============================================================================
+#         nans, x= nan_helper(OD_temp[0,:])
+#         OD_temp[0,nans]= np.interp(x(nans), x(~nans), OD_temp[0,~nans])
+#         
+#         nans, x= nan_helper(OD_temp[1,:])
+#         OD_temp[1,nans]= np.interp(x(nans), x(~nans), OD_temp[1,~nans])
+#         
+#         nans, x= nan_helper(OD_temp[2,:])
+#         OD_temp[2,nans]= np.interp(x(nans), x(~nans), OD_temp[2,~nans])
+#         
+#         nans, x= nan_helper(OS_temp[0,:])
+#         OS_temp[0,nans]= np.interp(x(nans), x(~nans), OS_temp[0,~nans])
+#         
+#         nans, x= nan_helper(OS_temp[1,:])
+#         OS_temp[1,nans]= np.interp(x(nans), x(~nans), OS_temp[1,~nans])
+#         
+#         nans, x= nan_helper(OS_temp[2,:])
+#         OS_temp[2,nans]= np.interp(x(nans), x(~nans), OS_temp[2,~nans])
+# =============================================================================
         
         self.OD = OD_temp
         self.OS = OS_temp

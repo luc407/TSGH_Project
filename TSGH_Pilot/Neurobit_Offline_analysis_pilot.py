@@ -29,16 +29,16 @@ if __name__== '__main__':
     main_path = "E:\\Result\\"+ Neurobit.Release_ver +"\\Result"
     Subject.DB_path = "E:\\Result\\"+ Neurobit.Release_ver
     folderList = Subject.GetFolderPath(main_path)
-    for folder1 in folderList:
-        try: del ACT_task
-        except: pass
-        try: del Gaze9_task
-        except: pass 
-        try: del CUT_task
-        except: pass
-        sub_folderList = Subject.GetFolderPath(folder1)
-        IsACT_Task = False; IsGaze9_Task = False; IsCUT_Task = False
-        for folder2 in sub_folderList:            
+    for folder1 in folderList:        
+        sub_folderList = Subject.GetFolderPath(folder1)        
+        for folder2 in sub_folderList:       
+            try: del ACT_task
+            except: pass
+            try: del Gaze9_task
+            except: pass 
+            try: del CUT_task
+            except: pass
+            IsACT_Task = False; IsGaze9_Task = False; IsCUT_Task = False
             csv_files = Subject.GetSubjectFiles(folder2)        
             for csv_path in csv_files:
                 Subject.FolderName = csv_path.split("\\")[-2]
@@ -66,7 +66,7 @@ if __name__== '__main__':
             except: print("No ACT_Task!!!")
             if IsACT_Task:
                 ACT_task.MergeFile()
-                eye_file = os.path.join(ACT_task.save_csv_path, ACT_task.FolderName+"\\"+ACT_task.task+"_EyePositionCsv.xlsx")
+                eye_file = os.path.join(ACT_task.save_path, ACT_task.FolderName+"\\"+ACT_task.task+"_EyePositionCsv.xlsx")
                 df = pd.read_excel(eye_file)
                 ACT_task.OD = np.array([df.OD_x, df.OD_y, df.OD_p])
                 ACT_task.OS = np.array([df.OS_x, df.OS_y, df.OS_p])
@@ -87,7 +87,7 @@ if __name__== '__main__':
             except: print("No CUT_Task!!!")
             if IsCUT_Task:
                 CUT_task.MergeFile()
-                eye_file = os.path.join(CUT_task.save_csv_path, CUT_task.FolderName+"\\"+ CUT_task.task+"_EyePositionCsv.xlsx")
+                eye_file = os.path.join(CUT_task.save_path, CUT_task.FolderName+"\\"+ CUT_task.task+"_EyePositionCsv.xlsx")
                 df = pd.read_excel(eye_file)
                 CUT_task.OD = np.array([df.OD_x, df.OD_y, df.OD_p])
                 CUT_task.OS = np.array([df.OS_x, df.OS_y, df.OS_p])
@@ -109,7 +109,7 @@ if __name__== '__main__':
             except: print("No Gaze9_Task!!!")
             if IsGaze9_Task:
                 Gaze9_task.MergeFile()
-                eye_file = os.path.join(Gaze9_task.save_csv_path,  Gaze9_task.FolderName+"\\"+Gaze9_task.task+"_EyePositionCsv.xlsx")
+                eye_file = os.path.join(Gaze9_task.save_path,  Gaze9_task.FolderName+"\\"+Gaze9_task.task+"_EyePositionCsv.xlsx")
                 df = pd.read_excel(eye_file)
                 Gaze9_task.OD = np.array([df.OD_x, df.OD_y, df.OD_p])
                 Gaze9_task.OS = np.array([df.OS_x, df.OS_y, df.OS_p])

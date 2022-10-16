@@ -16,7 +16,7 @@ Fail = []
 Subject = Neurobit()
 
 if __name__== '__main__':    
-    Neurobit.Release_ver = "Release2.02_pilot"
+    Neurobit.Release_ver = "Release2.01_pilot"
     main_path = "E:\\Result\\"+ Neurobit.Release_ver +"\\Result"
     save_path = os.getcwd()+"\\RESULT\\Calibration"
     folderList = Subject.GetFolderPath(main_path)
