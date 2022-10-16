@@ -31,16 +31,16 @@ if __name__== '__main__':
     Subject.DB_path = "E:\\Result\\"+ Neurobit.Release_ver
     folderList = Subject.GetFolderPath(main_path)
     for folder1 in folderList:
-        try: del ACT_task
-        except: pass
-        try: del Gaze9_task
-        except: pass 
-        try: del CUT_task
-        except: pass
-        sub_folderList = Subject.GetFolderPath(folder1)
-        IsACT_Task = False; IsGaze9_Task = False; IsCUT_Task = False
-        for folder2 in sub_folderList:            
-            csv_files = Subject.GetSubjectFiles(folder2)        
+        sub_folderList = Subject.GetFolderPath(folder1)        
+        for folder2 in sub_folderList:        
+            try: del ACT_task
+            except: pass
+            try: del Gaze9_task
+            except: pass 
+            try: del CUT_task
+            except: pass
+            csv_files = Subject.GetSubjectFiles(folder2)      
+            IsACT_Task = False; IsGaze9_Task = False; IsCUT_Task = False
             for csv_path in csv_files:
                 Subject.FolderName = csv_path.split("\\")[-2]
                 Subject.GetProfile(csv_path)
@@ -158,12 +158,12 @@ if __name__== '__main__':
                 subprocess.Popen(pdf_path, shell=True)
     Subject.GetACT_Save()
     ACT_dx_pd = pd.DataFrame(Subject.ACT_dx) 
-    ACT_dx_pd.to_excel(os.path.join(Subject.save_path,'Release2.01_ACT_dx.xlsx'))   
+    ACT_dx_pd.to_excel(os.path.join(Subject.save_path,'Release2.02_ACT_dx.xlsx'))   
     
     Subject.GetGaze9_Save()
     Gaze9_dx_pd = pd.DataFrame(Subject.Gaze9_dx) 
-    Gaze9_dx_pd.to_excel(os.path.join(Subject.save_path,'Release2.01_Gaze9_dx.xlsx'))   
+    Gaze9_dx_pd.to_excel(os.path.join(Subject.save_path,'Release2.02_Gaze9_dx.xlsx'))   
     
     Subject.GetCUT_Save()
     CUT_dx_pd = pd.DataFrame(Subject.CUT_dx) 
-    CUT_dx_pd.to_excel(os.path.join(Subject.save_path,'Release2.01_CUT_dx.xlsx'))   
+    CUT_dx_pd.to_excel(os.path.join(Subject.save_path,'Release2.02_CUT_dx.xlsx'))   
