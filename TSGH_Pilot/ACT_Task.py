@@ -103,7 +103,7 @@ class ACT_Task(Neurobit):
         self.OS_fix = OS_fix        
     def VoiceCommandFeatureExtraction(self):
         def GetTrialCmd(i,eyePosition,ACT_Trial,act_time,CmdTime):
-            duration = int(2*24) # respond period = seconds*fps            
+            duration = int(1.5*24) # respond period = seconds*fps            
             LT = 5  # Set default latency
             CmdTmp = CmdTime[act_time];print(act_time, i)
             Trial_trg_ind = np.where(np.diff(CmdTime[act_time]) > 5)[0]
@@ -113,7 +113,7 @@ class ACT_Task(Neurobit):
             else: end_ind = len(CmdTmp)-1                
             # Find eyePosition inital respond point
             baseline = np.nanmean(eyePosition[:2,CmdTmp[start_ind:start_ind+LT]],axis = 1).reshape(2,-1) # mean value in latency
-            slope = np.nansum(abs(eyePosition[:2,CmdTmp[start_ind:end_ind]]-baseline),axis=0)            # normalize eye position after latency
+            slope = np.nansum(abs(eyePosition[:2,CmdTmp[start_ind:start_ind+duration]]-baseline),axis=0)            # normalize eye position after latency
             trg_ind = np.where(slope>2.5)[0]    # find differential more than 2.5 pixel
             
             if trg_ind.any(): 
@@ -322,6 +322,7 @@ class ACT_Task(Neurobit):
             self.NeurobitDx_V = 'Ortho'
             self.NeurobitDxDev_V = 0  
         nb.ACT_Save._ACT_dx['ID'].append(self.ID)
+        nb.ACT_Save._ACT_dx['Date'].append(self.FolderName.split('_')[0])
         nb.ACT_Save._ACT_dx['H_Dx'].append(self.NeurobitDx_H)
         nb.ACT_Save._ACT_dx['H_Dev'].append(self.NeurobitDxDev_H)
         nb.ACT_Save._ACT_dx['H_type'].append(self.NeurobitDxTp_X)
@@ -430,8 +431,13 @@ class ACT_Task(Neurobit):
         fig.set_dpi(300)
         for pic in ACT:
             cap = nb.GetVideo(self.csv_path)
-            cap.set(1,pic)
+            cap.set(1,pic+1)
             ret, im = cap.read()
+            j = 1
+            while(not ret):
+                cap.set(1,pic+1-j)
+                ret, im = cap.read()
+                j+=1
             height = im.shape[0]
             width = im.shape[1]
             try:
