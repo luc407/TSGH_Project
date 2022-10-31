@@ -7,6 +7,7 @@ Created on Tue Sep 27 21:38:32 2022
 import os
 import cv2
 import math
+import tkinter as tk
 import numpy as np
 import Neurobit as nb
 from Neurobit import Neurobit
@@ -14,6 +15,7 @@ from scipy import stats
 from matplotlib import pyplot as plt
 from matplotlib.ticker import (MultipleLocator, FormatStrFormatter,
                                AutoMinorLocator)
+from EyeTrack import EyeTrackSys
     
 class Gaze9_Task(Neurobit):
     def __init__(self, csv_path):
@@ -81,169 +83,194 @@ class Gaze9_Task(Neurobit):
             exec('cov_non = np.where(cover['+nb.GAZE_9_TIME[i]+'] >= 0)[0]')
             exec('self.CmdTime[nb.GAZE_9_TIME[i]] = '+nb.GAZE_9_TIME[i]+'[cov_non]')
     def FeatureExtraction(self,*args):
-        def GetTrialCmd(i,eyePosition,ACT_Trial,act_time,CmdTime,AdjCmdTime):
-            ACT_Trial = np.array(ACT_Trial)
-            duration = int(1.5*24) # respond period = seconds*fps            
+        def GetTrialCmd(i,eyePosition,Gaze9,T,CmdTime,AdjCmdTime):
+            window = int(1*24) # respond period = seconds*fps 
             LT = 10  # Set default latency
-            CmdTmp = CmdTime[act_time];print(act_time,i)
-            Trial_trg_ind = np.where(np.diff(CmdTime[act_time]) > 5)[0]
+            CmdTmp = CmdTime[T];print(T,i)            
+            
+            Trial_trg_ind = np.where(np.diff(CmdTime[T]) > 5)[0]
             start_ind = np.where(CmdTmp == i)[0][0]
-            end_ind = Trial_trg_ind[np.where(Trial_trg_ind>start_ind)[0]]                
+            end_ind = Trial_trg_ind[np.where(Trial_trg_ind>start_ind)[0]]
             if end_ind.any(): end_ind = end_ind[0]
-            else: end_ind = len(CmdTmp)-1   
-            print(CmdTmp[end_ind])             
-            # Find eyePosition inital respond point
-            baseline = np.nanmean(eyePosition[:2,CmdTmp[start_ind:start_ind+LT]],axis = 1).reshape(2,-1) # mean value in latency
-            slope = np.nansum(abs(eyePosition[:2,CmdTmp[start_ind]:CmdTmp[start_ind]+duration*2]-baseline),axis=0)            # normalize eye position after latency
-            trg_ind = np.where(slope>20)[0]    # find differential more than 2.5 pixel
-            if trg_ind.any(): 
-                trg_eye_ind = CmdTmp[start_ind] + trg_ind[0]
-                plt.plot(eyePosition[0,trg_eye_ind:trg_eye_ind+duration])
-                plt.plot(eyePosition[1,trg_eye_ind:trg_eye_ind+duration])
-                plt.show()
-                if ACT_Trial.any():
-                    ACT_Trial = np.append(ACT_Trial, eyePosition[:,trg_eye_ind:trg_eye_ind+duration],axis = 1)
-                    AdjCmdTime[act_time] = np.append(AdjCmdTime[act_time],np.array(range(trg_eye_ind,trg_eye_ind+duration)))
-                else:
-                    ACT_Trial = eyePosition[:,trg_eye_ind:trg_eye_ind+duration]
-                    AdjCmdTime[act_time] = np.array(range(trg_eye_ind,trg_eye_ind+duration))
-            else:
-                if ACT_Trial.any():
-                    ACT_Trial = np.append(ACT_Trial, eyePosition[:,CmdTmp[start_ind:end_ind]],axis = 1) 
-                    AdjCmdTime[act_time] = np.append(AdjCmdTime[act_time],CmdTmp[start_ind:end_ind])
-                else:
-                    ACT_Trial = eyePosition[:,CmdTmp]
-                    AdjCmdTime[act_time] = CmdTmp            
-            i = CmdTmp[end_ind]+1            
-            return ACT_Trial, AdjCmdTime, i
+            else: end_ind = len(CmdTmp)-1            
+            
+            t = CmdTmp[start_ind]-window-1;            
+            baseline_x = np.nanmean(eyePosition[0,CmdTmp[start_ind]-window:CmdTmp[start_ind]-window+LT]) # mean value in latency
+            baseline_y = np.nanmean(eyePosition[1,CmdTmp[start_ind]-window:CmdTmp[start_ind]-window+LT]) # mean value in latency
+            
+            tmp_t = []; 
+            if T == 'F':                
+                try:
+                    Gaze9[T] = np.append(Gaze9[T], [np.nanpercentile(eyePosition[:,CmdTmp[start_ind:end_ind]],50,axis = 1)],axis = 0)
+                except:
+                    Gaze9[T] = [np.nanpercentile(eyePosition[:,CmdTmp[start_ind:end_ind]],50,axis = 1)]
+                try:
+                    AdjCmdTime[T] = np.append(AdjCmdTime[T],CmdTmp[end_ind])
+                except:
+                    AdjCmdTime[T] = CmdTmp[end_ind]
+            elif T == 'U':
+                pre_x = baseline_x; pre_y = baseline_y;
+                for x,y,p in eyePosition[:,CmdTmp[start_ind]-window:CmdTmp[end_ind]+window].transpose():
+                    t+=1
+                    if y < pre_y:
+                        fin_x = x; fin_y = y; fin_p = p;
+                        pre_x = x; pre_y = y;
+                        tmp_t = t
+            elif T == 'D':
+                pre_x = baseline_x; pre_y = baseline_y;
+                for x,y,p in eyePosition[:,CmdTmp[start_ind]-window:CmdTmp[end_ind]+window].transpose():
+                    t+=1
+                    if y > pre_y:
+                        fin_x = x; fin_y = y; fin_p = p;
+                        pre_x = x; pre_y = y;
+                        tmp_t = t
+            elif T == 'R':
+                pre_x = baseline_x; pre_y = baseline_y;
+                for x,y,p in eyePosition[:,CmdTmp[start_ind]-window:CmdTmp[end_ind]+window].transpose():
+                    t+=1
+                    if x < pre_x:
+                        fin_x = x; fin_y = y; fin_p = p;
+                        pre_x = x; pre_y = y;
+                        tmp_t = t
+            elif T == 'L':
+                pre_x = baseline_x; pre_y = baseline_y;
+                for x,y,p in eyePosition[:,CmdTmp[start_ind]-window:CmdTmp[end_ind]+window].transpose():
+                    t+=1
+                    if x > pre_x:
+                        fin_x = x; fin_y = y; fin_p = p;
+                        pre_x = x; pre_y = y;
+                        tmp_t = t
+            elif T == 'RU':
+                pre_x = baseline_x; pre_y = baseline_y;
+                for x,y,p in eyePosition[:,CmdTmp[start_ind]-window:CmdTmp[end_ind]+window].transpose():
+                    t+=1
+                    if x < pre_x or y < pre_y:
+                        fin_x = x; fin_y = y; fin_p = p;
+                        pre_x = x; pre_y = y;
+                        tmp_t = t
+            elif T == 'LU':
+                pre_x = baseline_x; pre_y = baseline_y;
+                for x,y,p in eyePosition[:,CmdTmp[start_ind]-window:CmdTmp[end_ind]+window].transpose():
+                    t+=1
+                    if x > pre_x or y < pre_y:
+                        fin_x = x; fin_y = y; fin_p = p;
+                        pre_x = x; pre_y = y;
+                        tmp_t = t
+            elif T == 'RD':
+                pre_x = baseline_x; pre_y = baseline_y;
+                for x,y,p in eyePosition[:,CmdTmp[start_ind]-window:CmdTmp[end_ind]+window].transpose():
+                    t+=1
+                    if x < pre_x or y > pre_y:
+                        fin_x = x; fin_y = y; fin_p = p;
+                        pre_x = x; pre_y = y;
+                        tmp_t = t
+            elif T == 'LD':
+                pre_x = baseline_x; pre_y = baseline_y;
+                for x,y,p in eyePosition[:,CmdTmp[start_ind]-window:CmdTmp[end_ind]+window].transpose():
+                    t+=1
+                    if x > pre_x or y > pre_y:
+                        fin_x = x; fin_y = y; fin_p = p;
+                        pre_x = x; pre_y = y;
+                        tmp_t = t
+            if not tmp_t: 
+                tmp_t = CmdTmp[start_ind]
+                fin_x, fin_y, fin_p = list(np.nanmean(eyePosition[:,CmdTmp[start_ind:end_ind]],axis = 1))
+            if T != 'F':
+                try:
+                    Gaze9[T] = np.append(Gaze9[T], [[fin_x,fin_y,fin_p]],axis = 0)
+                except:
+                    Gaze9[T] = [[fin_x,fin_y,fin_p]]
+                try:
+                    AdjCmdTime[T] = np.append(AdjCmdTime[T],tmp_t)
+                except:
+                    AdjCmdTime[T] = tmp_t
+            i = CmdTmp[end_ind]+1
+            return Gaze9, AdjCmdTime, i
         OD = self.OD.astype('float'); OS = self.OS.astype('float')
-        
-        OD_Gaze9_F = []; OS_Gaze9_F = [];
-        OD_Gaze9_L = []; OS_Gaze9_L = [];
-        OD_Gaze9_R = []; OS_Gaze9_R = [];
-        OD_Gaze9_U = []; OS_Gaze9_U = [];
-        OD_Gaze9_D = []; OS_Gaze9_D = [];
-        OD_Gaze9_LU = []; OS_Gaze9_LU = [];
-        OD_Gaze9_RU = []; OS_Gaze9_RU = [];
-        OD_Gaze9_LD = []; OS_Gaze9_LD = [];
-        OD_Gaze9_RD = []; OS_Gaze9_RD = [];
-        
-        AdjCmdTime = dict()
                 
-        i = 0;      # read CmdTime
-        rd = 0;     # read O_trg_ind index
-        rd_ucr = 0  # read UCR_trg_ind index        
+        AdjCmdTime = dict()
+        OD_Gaze9 = dict()
+        OS_Gaze9 = dict()
+                
+        i = 0; PASS = False;      # read CmdTime        
         while(i < len(OD[0,:])):
-            if i in self.CmdTime['F']:
-                OD_Gaze9_F,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_F,'F',self.CmdTime,AdjCmdTime)
-                OS_Gaze9_F,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_F,'F',self.CmdTime,AdjCmdTime) 
-            elif i in self.CmdTime['L']:
-                OD_Gaze9_L,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_L,'L',self.CmdTime,AdjCmdTime)
-                OS_Gaze9_L,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_L,'L',self.CmdTime,AdjCmdTime)            
-            elif i in self.CmdTime['R']:
-                OD_Gaze9_R,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_R,'R',self.CmdTime,AdjCmdTime)
-                OS_Gaze9_R,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_R,'R',self.CmdTime,AdjCmdTime)  
-            elif i in self.CmdTime['U']:
-                OD_Gaze9_U,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_U,'U',self.CmdTime,AdjCmdTime)
-                OS_Gaze9_U,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_U,'U',self.CmdTime,AdjCmdTime)
-            elif i in self.CmdTime['D']:
-                OD_Gaze9_D,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_D,'D',self.CmdTime,AdjCmdTime)
-                OS_Gaze9_D,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_D,'D',self.CmdTime,AdjCmdTime)
-            elif i in self.CmdTime['LU']:
-                OD_Gaze9_LU,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_LU,'LU',self.CmdTime,AdjCmdTime)
-                OS_Gaze9_LU,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_LU,'LU',self.CmdTime,AdjCmdTime)            
-            elif i in self.CmdTime['RU']:
-                OD_Gaze9_RU,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_RU,'RU',self.CmdTime,AdjCmdTime)
-                OS_Gaze9_RU,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_RU,'RU',self.CmdTime,AdjCmdTime) 
-            elif i in self.CmdTime['LD']:
-                OD_Gaze9_LD,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_LD,'LD',self.CmdTime,AdjCmdTime)
-                OS_Gaze9_LD,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_LD,'LD',self.CmdTime,AdjCmdTime)            
-            elif i in self.CmdTime['RD']:
-                OD_Gaze9_RD,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9_RD,'RD',self.CmdTime,AdjCmdTime)
-                OS_Gaze9_RD,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9_RD,'RD',self.CmdTime,AdjCmdTime) 
-            else:
+            for TIME in range(0,len(nb.GAZE_9_TIME)):                
+                if i in self.CmdTime[nb.GAZE_9_TIME[TIME]]:
+                    T = nb.GAZE_9_TIME[TIME]
+                    OD_Gaze9,AdjCmdTime,_ = GetTrialCmd(i,OD,OD_Gaze9,T,self.CmdTime,AdjCmdTime)
+                    OS_Gaze9,AdjCmdTime,i = GetTrialCmd(i,OS,OS_Gaze9,T,self.CmdTime,AdjCmdTime)
+                    PASS = True
+                    break
+                else:
+                    PASS = False                
+            if not PASS:
                 i+=1
-        self.CmdTime = AdjCmdTime
+        
         #GAZE_9_TIME     = ['F','U','D','R','L','RU','LU','RD','LD']
         OD = self.OD; OS = self.OS; Finished_ACT = False
         Gaze_9_OD = []; Gaze_9_OS = [];       # all position in each ACT_TIME
         NeurobitDxDev_H = list();NeurobitDxDev_V = list()
         for i in range(0,len(nb.GAZE_9_TIME)):
-            if self.CmdTime[nb.GAZE_9_TIME[i]].any():
-                if nb.GAZE_9_TIME[i] == 'D': 
-                    Gaze_9_OD.append([np.nanpercentile(OD_Gaze9_D[0,:],50),
-                                       np.nanpercentile(OD_Gaze9_D[1,:],80),
-                                       np.nanpercentile(OD_Gaze9_D[2,:],50)])
-                    Gaze_9_OS.append([np.nanpercentile(OS_Gaze9_D[0,:],50),
-                                       np.nanpercentile(OS_Gaze9_D[1,:],80),
-                                       np.nanpercentile(OS_Gaze9_D[2,:],50)])
-                elif nb.GAZE_9_TIME[i] == 'F': 
-                    Gaze_9_OD.append(np.nanpercentile(OD_Gaze9_F,50,axis = 1))
-                    Gaze_9_OS.append(np.nanpercentile(OS_Gaze9_F,50,axis = 1))
-                elif nb.GAZE_9_TIME[i] == 'L':
-                    Gaze_9_OD.append([np.nanpercentile(OD_Gaze9_L[0,:],80),
-                                       np.nanpercentile(OD_Gaze9_L[1,:],50),
-                                       np.nanpercentile(OD_Gaze9_L[2,:],50)])
-                    Gaze_9_OS.append([np.nanpercentile(OS_Gaze9_L[0,:],80),
-                                       np.nanpercentile(OS_Gaze9_L[1,:],50),
-                                       np.nanpercentile(OS_Gaze9_L[2,:],50)])
-                elif nb.GAZE_9_TIME[i] == 'LD':
-                    Gaze_9_OD.append(np.nanpercentile(OD_Gaze9_LD,80,axis = 1))
-                    Gaze_9_OS.append(np.nanpercentile(OS_Gaze9_LD,80,axis = 1))
-                elif nb.GAZE_9_TIME[i] == 'LU':
-                    Gaze_9_OD.append([np.nanpercentile(OD_Gaze9_LU[0,:],80),
-                                       np.nanpercentile(OD_Gaze9_LU[1,:],20),
-                                       np.nanpercentile(OD_Gaze9_LU[2,:],50)])
-                    Gaze_9_OS.append([np.nanpercentile(OS_Gaze9_LU[0,:],80),
-                                       np.nanpercentile(OS_Gaze9_LU[1,:],20),
-                                       np.nanpercentile(OS_Gaze9_LU[2,:],50)])
-                elif nb.GAZE_9_TIME[i] == 'R':
-                    Gaze_9_OD.append([np.nanpercentile(OD_Gaze9_R[0,:],20),
-                                       np.nanpercentile(OD_Gaze9_R[1,:],50),
-                                       np.nanpercentile(OD_Gaze9_R[2,:],50)])
-                    Gaze_9_OS.append([np.nanpercentile(OS_Gaze9_R[0,:],20),
-                                       np.nanpercentile(OS_Gaze9_R[1,:],50),
-                                       np.nanpercentile(OS_Gaze9_R[2,:],50)])
-                elif nb.GAZE_9_TIME[i] == 'RD':
-                    Gaze_9_OD.append([np.nanpercentile(OD_Gaze9_RD[0,:],20),
-                                       np.nanpercentile(OD_Gaze9_RD[1,:],80),
-                                       np.nanpercentile(OD_Gaze9_RD[2,:],50)])
-                    Gaze_9_OS.append([np.nanpercentile(OS_Gaze9_RD[0,:],20),
-                                       np.nanpercentile(OS_Gaze9_RD[1,:],80),
-                                       np.nanpercentile(OS_Gaze9_RD[2,:],50)])
-                elif nb.GAZE_9_TIME[i] == 'RU':
-                    Gaze_9_OD.append(np.nanpercentile(OD_Gaze9_RU,20,axis = 1))
-                    Gaze_9_OS.append(np.nanpercentile(OS_Gaze9_RU,20,axis = 1))
-                elif nb.GAZE_9_TIME[i] == 'U':
-                    Gaze_9_OD.append([np.nanpercentile(OD_Gaze9_U[0,:],50),
-                                       np.nanpercentile(OD_Gaze9_U[1,:],20),
-                                       np.nanpercentile(OD_Gaze9_U[2,:],50)])
-                    Gaze_9_OS.append([np.nanpercentile(OS_Gaze9_U[0,:],50),
-                                       np.nanpercentile(OS_Gaze9_U[1,:],20),
-                                       np.nanpercentile(OS_Gaze9_U[2,:],50)])
-            else:
-                Gaze_9_OD.append([np.nan, np.nan, np.nan])
-                Gaze_9_OS.append([np.nan, np.nan, np.nan])
-                        
+            if AdjCmdTime[nb.GAZE_9_TIME[i]].any():
+                for j in range(0,len(AdjCmdTime[nb.GAZE_9_TIME[i]])):
+                    T = nb.GAZE_9_TIME[i]
+                    cap = nb.GetVideo(self.csv_path)
+                    cap.set(1,AdjCmdTime[nb.GAZE_9_TIME[i]][j])
+                    ret, im = cap.read()  
+                    if j%2 == 0 and ret:
+                        my_gui = EyeTrackSys(self.csv_path,
+                                             AdjCmdTime[nb.GAZE_9_TIME[i]][j],OD_Gaze9[T][int(j/2)],
+                                             nb.GAZE_9_TIME[i])
+                        my_gui.master.mainloop()
+                        if not np.isnan(my_gui.xy).any():
+                            self.OD[0][my_gui.pic] = my_gui.xy[0][0]
+                            self.OD[1][my_gui.pic] = my_gui.xy[0][1]
+                            OD_Gaze9[T][int(j/2)][0] = my_gui.xy[0][0]
+                            OD_Gaze9[T][int(j/2)][1] = my_gui.xy[0][1]                            
+                            AdjCmdTime[nb.GAZE_9_TIME[i]][j] = my_gui.pic
+                            print(OD_Gaze9[T][int(j/2)][0],OD_Gaze9[T][int(j/2)][1],AdjCmdTime[nb.GAZE_9_TIME[i]][j])
+                    elif j%2 == 1 and ret:
+                        my_gui = EyeTrackSys(self.csv_path,
+                                             AdjCmdTime[nb.GAZE_9_TIME[i]][j],OS_Gaze9[T][int((j-1)/2)],
+                                             nb.GAZE_9_TIME[i])
+                        my_gui.master.mainloop()
+                        if not np.isnan(my_gui.xy).any():
+                            self.OS[0][my_gui.pic] = my_gui.xy[0][0]
+                            self.OS[1][my_gui.pic] = my_gui.xy[0][1]
+                            OS_Gaze9[T][int((j-1)/2)][0] = my_gui.xy[0][0]
+                            OS_Gaze9[T][int((j-1)/2)][1] = my_gui.xy[0][1]
+                            AdjCmdTime[nb.GAZE_9_TIME[i]][j] = my_gui.pic
+                            print(OS_Gaze9[T][int((j-1)/2)][0],OS_Gaze9[T][int((j-1)/2)][1],AdjCmdTime[nb.GAZE_9_TIME[i]][j])
+                if T == 'F':
+                    Gaze_9_OD.append(np.nanpercentile(OD_Gaze9[T],50,axis = 0))
+                    Gaze_9_OS.append(np.nanpercentile(OS_Gaze9[T],50,axis = 0))
+                else:
+                    diff = abs(OD_Gaze9[T][:,0]-Gaze_9_OD[0][0])+abs(OD_Gaze9[T][:,1]-Gaze_9_OD[0][1])
+                    loc = np.where(diff == np.max(diff))[0][0]
+                    Gaze_9_OD.append(OD_Gaze9[T][loc,:])
+                    Gaze_9_OS.append(OS_Gaze9[T][loc,:])
+                                        
         self.Gaze_9_OD = np.array(np.round(Gaze_9_OD,2))
         self.Gaze_9_OS = np.array(np.round(Gaze_9_OS,2))
+        self.CmdTime = AdjCmdTime
         
         for arg in args:
             if arg:
                 Finished_ACT = True
-                ACT_Task = arg
+                ACT_task = arg
             
         for i in range(0,len(nb.GAZE_9_TIME)):
             if Finished_ACT:
-                diff_OD_x = ACT_Task.OD_ACT[1][0]-self.Gaze_9_OD[i][0]
-                diff_OD_y = ACT_Task.OD_ACT[1][1]-self.Gaze_9_OD[i][1]
-                diff_OS_x = ACT_Task.OS_ACT[2][0]-self.Gaze_9_OS[i][0]
-                diff_OS_y = ACT_Task.OS_ACT[2][1]-self.Gaze_9_OS[i][1]
+                diff_OD_x = ACT_task.OD_ACT[1][0]-self.Gaze_9_OD[i][0]
+                diff_OD_y = ACT_task.OD_ACT[1][1]-self.Gaze_9_OD[i][1]
+                diff_OS_x = ACT_task.OS_ACT[2][0]-self.Gaze_9_OS[i][0]
+                diff_OS_y = ACT_task.OS_ACT[2][1]-self.Gaze_9_OS[i][1]
             else:
-                diff_OD_x = self.Gaze_9_OD[1][0]-self.Gaze_9_OD[i][0]
-                diff_OD_y = self.Gaze_9_OD[1][1]-self.Gaze_9_OD[i][1]
-                diff_OS_x = self.Gaze_9_OS[1][0]-self.Gaze_9_OS[i][0]
-                diff_OS_y = self.Gaze_9_OS[1][1]-self.Gaze_9_OS[i][1]
+                F_t = [i for i in range(0,len(nb.GAZE_9_TIME)) if nb.GAZE_9_TIME[i] == "F"]
+                diff_OD_x = self.Gaze_9_OD[F_t][0]-self.Gaze_9_OD[i][0]
+                diff_OD_y = self.Gaze_9_OD[F_t][1]-self.Gaze_9_OD[i][1]
+                diff_OS_x = self.Gaze_9_OS[F_t][0]-self.Gaze_9_OS[i][0]
+                diff_OS_y = self.Gaze_9_OS[F_t][1]-self.Gaze_9_OS[i][1]
             PD_OD = nb.trans_AG(self.AL_OD,np.array([diff_OD_x, diff_OD_y]),nb.CAL_VAL_OD)
             PD_OS = nb.trans_AG(self.AL_OS,np.array([diff_OS_x, diff_OS_y]),nb.CAL_VAL_OS)
             NeurobitDxDev_H.append([PD_OD[0], PD_OS[0]])
@@ -256,17 +283,18 @@ class Gaze9_Task(Neurobit):
         self.NeurobitDxDev_V = np.round(np.array(NeurobitDxDev_V),2)
         
         #GAZE_9_TIME     = ['F','U','D','R','L','RU','LU','RD','LD']
-        a = self.NeurobitDxDev_H.transpose()[0][[5,7,8,4,2,3,0,6]]
-        b = self.NeurobitDxDev_V.transpose()[0][[5,7,8,4,2,3,0,6]]
+        a = self.NeurobitDxDev_H.transpose()[0][nb.GAZE_9_BOARDER]
+        b = self.NeurobitDxDev_V.transpose()[0][nb.GAZE_9_BOARDER]
         xy = np.array([a,b]).transpose()
         OD_Area = np.round(nb.enclosed_area(xy),2)
         
-        a = self.NeurobitDxDev_H.transpose()[1][[5,7,8,4,2,3,0,6]]
-        b = self.NeurobitDxDev_V.transpose()[1][[5,7,8,4,2,3,0,6]]
+        a = self.NeurobitDxDev_H.transpose()[1][nb.GAZE_9_BOARDER]
+        b = self.NeurobitDxDev_V.transpose()[1][nb.GAZE_9_BOARDER]
         xy = np.array([a,b]).transpose()
         OS_Area = np.round(nb.enclosed_area(xy),2)
         
         nb.Gaze9_Save._Gaze9_dx['ID'].append(self.ID)
+        nb.Gaze9_Save._Gaze9_dx['Date'].append(self.FolderName.split('_')[0])
         nb.Gaze9_Save._Gaze9_dx['OD_Area'].append(OD_Area)
         nb.Gaze9_Save._Gaze9_dx['OS_Area'].append(OS_Area)       
     def SeperateSession(self):
@@ -410,9 +438,11 @@ class Gaze9_Task(Neurobit):
             pic_cont+=1
         plt.tight_layout()
         plt.savefig(os.path.join(self.saveImage_path,"DrawEyeFig.png"), dpi=300)
-        plt.close()
+# =============================================================================
+#         plt.close()
+# =============================================================================
     def DrawEyeMesh(self):
-        border = [7,2,8,4,6,1,5,3,7]
+        border = np.concatenate((nb.GAZE_9_BOARDER, [nb.GAZE_9_BOARDER[0]]))
         MIN = -50; MAX = 50
         fig = plt.gcf()
         fig.set_size_inches(6/1.2,3/1.2, forward=True)
@@ -445,12 +475,13 @@ class Gaze9_Task(Neurobit):
             plt.hlines(-15,-20,20,linewidth = .5,colors = 'g')
             plt.title(nb.EYE[i]+" (°)")
             plt.grid(True,alpha = 0.5)
-            plt.scatter(-self.NeurobitDxDev_H[:,i],self.NeurobitDxDev_V[:,i]+diff_V,
+            plt.scatter(self.NeurobitDxDev_H[:,i],self.NeurobitDxDev_V[:,i]+diff_V,
                         s = cir_size,c = 'k',)
-            plt.plot(-self.NeurobitDxDev_H[border,i],self.NeurobitDxDev_V[border,i]+diff_V,
+            plt.plot(self.NeurobitDxDev_H[border,i],self.NeurobitDxDev_V[border,i]+diff_V,
                         linewidth = .5,c = 'r',)
             plt.xlim([MIN,MAX])
             plt.ylim([MIN,MAX])
+            ax.invert_xaxis()
             plt.xticks(fontsize=8)
             plt.yticks(fontsize=8)
 

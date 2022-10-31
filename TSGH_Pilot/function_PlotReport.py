@@ -7,6 +7,7 @@ Created on Fri Oct  8 17:32:28 2021
 
 # ReportLab imports
 import numpy as np
+import Neurobit as nb
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -297,9 +298,7 @@ def CUTReport(Element, CUT_Task):
     return Element
 
 def Gaze9Report(Element, Gaze9_Session):
-    GAZE_9_STR      = ["D",       "F",    "L",     
-                   "LD",  "LU",  "R",  
-                   "RD", "RU", "U"]
+    GAZE_9_STR      = nb.GAZE_9_TIME
     sub_head2 = sub_head("9 Gaze Dynamic Eyeposition Tracking")
     sub_head3 = sub_head("Ocular Motility Table")
     text1 = con_text("9 Gaze Test Sequence")

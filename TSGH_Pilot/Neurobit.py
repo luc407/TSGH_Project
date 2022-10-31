@@ -45,7 +45,36 @@ GAZE_9_COLOR    = ['deepskyblue',  'wheat',    'mediumpurple',
 GAZE_9_STR      = ["Front",       "Up",    "Down",     
                    "Right",  "Left",  "Right Up",  
                    "Left Up", "Right Down", "Left Down"]
-GAZE_9_EYEFIG = [5,2,8,4,6,1,3,7,9]
+
+GAZE_9_EYEFIG = np.array([])
+GAZE_9_BOARDER = np.ones(8).astype(int)
+for T in range(0,len(GAZE_9_TIME)):
+    if GAZE_9_TIME[T] == 'F':
+        GAZE_9_EYEFIG = np.array([5])
+    elif GAZE_9_TIME[T] == 'U':
+        GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[2]))
+        GAZE_9_BOARDER[2] = T
+    elif GAZE_9_TIME[T] == 'D':
+        GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[8]))
+        GAZE_9_BOARDER[6] = T
+    elif GAZE_9_TIME[T] == 'R':
+        GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[4]))
+        GAZE_9_BOARDER[0] = T
+    elif GAZE_9_TIME[T] == 'L':
+        GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[6]))
+        GAZE_9_BOARDER[4] = T
+    elif GAZE_9_TIME[T] == 'RU':
+        GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[1]))
+        GAZE_9_BOARDER[1] = T
+    elif GAZE_9_TIME[T] == 'LU':
+        GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[3]))
+        GAZE_9_BOARDER[3] = T
+    elif GAZE_9_TIME[T] == 'RD':
+        GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[7]))
+        GAZE_9_BOARDER[7] = T
+    elif GAZE_9_TIME[T] == 'LD':
+        GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[9]))
+        GAZE_9_BOARDER[5] = T
 
 # color map
 line_color_palatte = {'greens':["#A5F5B3", "#51F46D",   "#00F62B", "#008D19", "#004D0D"], # pale / mid / base / dark / black              

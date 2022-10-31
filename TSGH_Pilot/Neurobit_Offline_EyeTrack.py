@@ -27,7 +27,7 @@ if __name__== '__main__':
     main_path = "E:\\Result\\"+ Neurobit.Release_ver +"\\Result"
     Subject.DB_path = "E:\\Result\\"+ Neurobit.Release_ver
     folderList = Subject.GetFolderPath(main_path)
-    for folder1 in folderList[2:]:        
+    for folder1 in folderList:        
         sub_folderList = Subject.GetFolderPath(folder1)        
         for folder2 in sub_folderList:          
             try: del ACT_task

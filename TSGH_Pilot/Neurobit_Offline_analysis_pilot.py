@@ -23,20 +23,25 @@ from calibration import CalibSystem
 
 Fail = []
 Subject = Neurobit()
-            
+# =============================================================================
+# sel = np.array([1,3,5,8,9,10])
+# =============================================================================
 if __name__== '__main__':
-    Neurobit.Release_ver = "Release2.02_pilot"
+    Neurobit.Release_ver = "Release2.01_pilot"
     main_path = "E:\\Result\\"+ Neurobit.Release_ver +"\\Result"
     Subject.DB_path = "E:\\Result\\"+ Neurobit.Release_ver
     folderList = Subject.GetFolderPath(main_path)
-    for folder1 in folderList:        
+    for folder1 in np.array(folderList):        
         sub_folderList = Subject.GetFolderPath(folder1)        
-        for folder2 in sub_folderList:       
-            try: del ACT_task
+        for folder2 in sub_folderList:
+            try: 
+                del ACT_task
             except: pass
-            try: del Gaze9_task
+            try: 
+                del Gaze9_task
             except: pass 
-            try: del CUT_task
+            try: 
+                del CUT_task
             except: pass
             IsACT_Task = False; IsGaze9_Task = False; IsCUT_Task = False
             csv_files = Subject.GetSubjectFiles(folder2)        
@@ -118,8 +123,8 @@ if __name__== '__main__':
 # =============================================================================
 #                 Gaze9_task.SeperateSession()        
 # =============================================================================
-                try: Gaze9_task.FeatureExtraction(ACT_task)
-                except: Gaze9_task.FeatureExtraction()        
+                if IsACT_Task: Gaze9_task.FeatureExtraction(ACT_task)
+                else: Gaze9_task.FeatureExtraction()        
                 #Gaze9_task.Save2Cloud()
         
                 Gaze9_task.DrawEyeFig()
