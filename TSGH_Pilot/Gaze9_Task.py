@@ -144,7 +144,7 @@ class Gaze9_Task(Neurobit):
                 pre_x = baseline_x; pre_y = baseline_y;
                 for x,y,p in eyePosition[:,CmdTmp[start_ind]-window:CmdTmp[end_ind]+window].transpose():
                     t+=1
-                    if x < pre_x or y < pre_y:
+                    if x < pre_x:
                         fin_x = x; fin_y = y; fin_p = p;
                         pre_x = x; pre_y = y;
                         tmp_t = t
@@ -160,7 +160,7 @@ class Gaze9_Task(Neurobit):
                 pre_x = baseline_x; pre_y = baseline_y;
                 for x,y,p in eyePosition[:,CmdTmp[start_ind]-window:CmdTmp[end_ind]+window].transpose():
                     t+=1
-                    if x < pre_x or y > pre_y:
+                    if x < pre_x:
                         fin_x = x; fin_y = y; fin_p = p;
                         pre_x = x; pre_y = y;
                         tmp_t = t
