@@ -150,7 +150,8 @@ def capture_eye_pupil(frame,eyes):
             
             
         thr = int(thr)
-        if thr>=180: thr = 90
+        if thr >= 180:  thr = 90
+        elif thr < 70:  thr = 70
         DC = True
         while not GET_CIRCLE and thr<180:            
             _,roi_gray1 = cv2.threshold(gray,thr,255,0)
