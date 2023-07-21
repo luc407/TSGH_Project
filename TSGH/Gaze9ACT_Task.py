@@ -83,10 +83,11 @@ class Gaze9ACT_Task(Neurobit):
             exec('cov_non = np.where(cover['+nb.GAZE_9_TIME[i]+'] >= 0)[0]')
             exec('self.CmdTime[nb.GAZE_9_TIME[i]] = '+nb.GAZE_9_TIME[i]+'[cov_non]')
     def FeatureExtraction(self):
+        
         def GetTrialCmd(i,eyePosition,Gaze9,T,CmdTime,AdjCmdTime):
             window = int(4*24) # respond period = seconds*fps 
             LT = 20  # Set default latency
-            CmdTmp = CmdTime[T];print(T,i)       
+            CmdTmp = CmdTime[T];#print(T,i)       
             CmdTmp = CmdTmp[CmdTmp<eyePosition.shape[1]-1]
             
             Trial_trg_ind = np.where(np.diff(CmdTime[T]) > 5)[0]
@@ -250,36 +251,46 @@ class Gaze9ACT_Task(Neurobit):
             
             self.NeurobitDxDev_H[cmd] = np.round([[PD_OD_O[0],PD_OS_O[0]], [PD_OD_CL[0],PD_OS_CL[0]], [PD_OD_CR[0],PD_OS_CR[0]]],2)
             self.NeurobitDxDev_V[cmd] = np.round([[PD_OD_O[1],PD_OS_O[1]], [PD_OD_CL[1],PD_OS_CL[1]], [PD_OD_CR[1],PD_OS_CR[1]]],2)
-            for i in range(0,3):
-                nb.Gaze9_Save._Gaze9_dx[cmd+'_OD_H_Dev'].append(self.NeurobitDxDev_H[cmd].transpose()[0][i])
-                nb.Gaze9_Save._Gaze9_dx[cmd+'_OS_H_Dev'].append(self.NeurobitDxDev_H[cmd].transpose()[1][i])
-                nb.Gaze9_Save._Gaze9_dx[cmd+'_OD_V_Dev'].append(self.NeurobitDxDev_V[cmd].transpose()[0][i])
-                nb.Gaze9_Save._Gaze9_dx[cmd+'_OS_V_Dev'].append(self.NeurobitDxDev_V[cmd].transpose()[1][i])
-        
+            
+            if len(self.NeurobitDxDev_H[cmd])==3:
+                nb.Gaze9_Save._Gaze9_dx[cmd+'_OD_H_Dev'].append(self.NeurobitDxDev_H[cmd].transpose()[0])
+                nb.Gaze9_Save._Gaze9_dx[cmd+'_OS_H_Dev'].append(self.NeurobitDxDev_H[cmd].transpose()[1])
+            else:
+                nb.Gaze9_Save._Gaze9_dx[cmd+'_OD_H_Dev'].append([np.nan, np.nan, np.nan])
+                nb.Gaze9_Save._Gaze9_dx[cmd+'_OS_H_Dev'].append([np.nan, np.nan, np.nan])
+            if len(self.NeurobitDxDev_V[cmd])==3:
+                nb.Gaze9_Save._Gaze9_dx[cmd+'_OD_V_Dev'].append(self.NeurobitDxDev_V[cmd].transpose()[0])
+                nb.Gaze9_Save._Gaze9_dx[cmd+'_OS_V_Dev'].append(self.NeurobitDxDev_V[cmd].transpose()[1])
+            else:
+                nb.Gaze9_Save._Gaze9_dx[cmd+'_OD_V_Dev'].append([np.nan, np.nan, np.nan])
+                nb.Gaze9_Save._Gaze9_dx[cmd+'_OS_V_Dev'].append([np.nan, np.nan, np.nan])
         """Get O, CL, CR's OD and OS movement area:
             nb.Gaze9_Save._Gaze9_dx['OD_Area'] = [O,CL,CR]
             nb.Gaze9_Save._Gaze9_dx['OS_Area'] = [O,CL,CR]
         """
-        a = [];b = []
+        a = [];b = []; OD_Area = []
         for i in range(0,3):
             for cmd in nb.GAZE_9_BOARDER:
                 a.append(self.NeurobitDxDev_H[cmd].transpose()[0][i])                
                 b.append(self.NeurobitDxDev_V[cmd].transpose()[0][i])            
             xy = np.array([a,b]).transpose()
-            OD_Area = np.round(nb.enclosed_area(xy),2)
-            nb.Gaze9_Save._Gaze9_dx['OD_Area'].append(OD_Area)
+            OD_Area.append(np.round(nb.enclosed_area(xy),2))
+        nb.Gaze9_Save._Gaze9_dx['OD_Area'].append(OD_Area)
        
-        a = [];b = []
+        a = [];b = []; OS_Area =  []
         for i in range(0,3):
            for cmd in nb.GAZE_9_BOARDER:
                a.append(self.NeurobitDxDev_H[cmd].transpose()[1][i])                
                b.append(self.NeurobitDxDev_V[cmd].transpose()[1][i])            
            xy = np.array([a,b]).transpose()
-           OS_Area = np.round(nb.enclosed_area(xy),2)
-           nb.Gaze9_Save._Gaze9_dx['OS_Area'].append(OS_Area)
+           OS_Area.append(np.round(nb.enclosed_area(xy),2))
+        nb.Gaze9_Save._Gaze9_dx['OS_Area'].append(OS_Area)
         
+        self.SaveDxTrue(nb.Gaze9_Save)
         nb.Gaze9_Save._Gaze9_dx['ID'].append(self.ID)
         nb.Gaze9_Save._Gaze9_dx['Examine Date'].append(self.FolderName.split('_')[0])
+        
+        
     def SeperateSession(self):
         OD = self.OD; OS = self.OS
         for i in range(0,len(nb.GAZE_9_TIME)):
