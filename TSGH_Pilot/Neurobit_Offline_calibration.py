@@ -18,9 +18,10 @@ Subject = Neurobit()
 if __name__== '__main__':    
     Neurobit.Release_ver = "Release2.01_pilot"
     main_path = "E:\\Result\\"+ Neurobit.Release_ver +"\\Result"
+    main_path = "E:\Result\TSGH_G_Project_0810_11"
     save_path = os.getcwd()+"\\RESULT\\Calibration"
     folderList = Subject.GetFolderPath(main_path)
-    for folder1 in folderList:
+    for folder1 in folderList[7:8]:
         sub_folderList = Subject.GetFolderPath(folder1)
         for folder2 in sub_folderList:
             IsCalibrated = False

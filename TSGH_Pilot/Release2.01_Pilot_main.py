@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd 
 import subprocess
 from Gaze9_Task import Gaze9_Task
+from Gaze9ACT_Task import Gaze9ACT_Task
 from ACT_Task import ACT_Task
 from CUT_Task import CUT_Task
 from Neurobit import Neurobit
@@ -16,7 +17,7 @@ from datetime import datetime
 from reportlab.platypus import BaseDocTemplate, Image, Paragraph, Table, TableStyle, PageBreak, \
     Frame, PageTemplate, NextPageTemplate,Spacer
 from function_PlotReport import main_head, sub_head, con_text, subject_table,\
-    clinic_table, diagnose_table, quality_bar, foot1, ACTReport, CreatePDF, Gaze9Report, CUTReport
+    clinic_table, diagnose_table, quality_bar, foot1, ACTReport, CreatePDF, Gaze9Report, CUTReport, Gaze9ACTReport
 from calibration import CalibSystem
 
 
@@ -24,9 +25,22 @@ from calibration import CalibSystem
 main_path = os.getcwd()
 Fail = []
 Subject = Neurobit()
+
+"""To do lsit
+['E:\\Result\\TSGH_G_Project_0810_11\\Result\\E124686892\\20230811_E124686892',
+       'E:\\Result\\TSGH_G_Project_0810_11\\Result\\E125135634\\20230811_E125135634',
+       'E:\\Result\\TSGH_G_Project_0810_11\\Result\\E225380382\\20230811_E225380382',
+       'E:\\Result\\TSGH_G_Project_0810_11\\Result\\F129488673\\20230811_F129488673',
+       'E:\\Result\\TSGH_G_Project_0810_11\\Result\\H225398010\\20230811_H225398010',
+       'E:\\Result\\TSGH_G_Project_0810_11\\Result\\Q124363053\\20230811_Q124363053']
+"""
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
+gauth = GoogleAuth()
+drive = GoogleDrive(gauth)
             
 if __name__== '__main__':    
-    Neurobit.Release_ver = "Release2.02_pilot"
+    Neurobit.Release_ver = "TSGH_G_Project_0810_11"
     main_path = "E:\\Result\\"+ Neurobit.Release_ver +"\\Result"
     Subject.DB_path = "E:\\Result\\"+ Neurobit.Release_ver
     folderList = Subject.GetFolderPath(main_path)
@@ -49,18 +63,21 @@ if __name__== '__main__':
                 if "9 Gaze Motility Test (9Gaze)" in Subject.Task:
                     try: Gaze9_task.session.append(csv_path)
                     except:
-                        Gaze9_task = Gaze9_Task(csv_path)   
+                        Gaze9_task = Gaze9ACT_Task(csv_path)   
                         Gaze9_task.session.append(csv_path)
+                        Gaze9_task.drive = drive
                 elif "Alternate Cover" in Subject.Task:
                     try: ACT_task.session.append(csv_path)
                     except:
                         ACT_task = ACT_Task(csv_path)  
                         ACT_task.session.append(csv_path)
+                        ACT_task.drive = drive
                 elif "Cover/Uncover Test (CUT)" in Subject.Task:
                     try: CUT_task.session.append(csv_path)
                     except:
                         CUT_task = CUT_Task(csv_path)  
                         CUT_task.session.append(csv_path)
+                        CUT_task.drive = drive
                 else:
                     pass
             
@@ -73,8 +90,12 @@ if __name__== '__main__':
             """Run Analysis"""
             if IsACT_Task:
                 ACT_task.showVideo = True
-                ACT_task.MergeFile()
-                ACT_task.Exec()
+                try:
+                    ACT_task.MergeFile()
+                    ACT_task.Exec()
+                except:
+                    IsACT_Task = False
+                    Fail.append(folder2)
             else:
                 ACT_task = ACT_Task(csv_path)  
                 ACT_task.miss_OD = np.nan
@@ -86,8 +107,12 @@ if __name__== '__main__':
                 
             if IsCUT_Task:
                 CUT_task.showVideo = True
-                CUT_task.MergeFile()
-                CUT_task.Exec()
+                try:
+                    CUT_task.MergeFile()
+                    CUT_task.Exec()
+                except:
+                    IsCUT_Task = False
+                    Fail.append(folder2)
             else:
                 CUT_task = CUT_Task(csv_path)  
                 CUT_task.miss_OD = np.nan
@@ -99,9 +124,12 @@ if __name__== '__main__':
                 
             if IsGaze9_Task:
                 Gaze9_task.showVideo = True
-                Gaze9_task.MergeFile()
-                if IsACT_Task: Gaze9_task.Exec(ACT_task)   
-                else: Gaze9_task.Exec()
+                try:
+                    Gaze9_task.MergeFile()
+                    Gaze9_task.Exec()
+                except:
+                    IsGaze9_Task = False
+                    Fail.append(folder2)
             else:
                 Gaze9_task = Gaze9_Task(csv_path)  
                 Gaze9_task.miss_OD = np.nan
@@ -152,7 +180,7 @@ if __name__== '__main__':
                     Element.append(PageBreak())
         
                 if IsGaze9_Task:
-                    Gaze9Report(Element, Gaze9_task)
+                    Gaze9ACTReport(Element, Gaze9_task)
         
                 pdf.build(Element)
                 subprocess.Popen(pdf_path, shell=True)

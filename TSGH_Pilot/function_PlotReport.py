@@ -92,7 +92,7 @@ def subject_table(Subject):
 def clinic_table(Subject):
     if Subject.Profile_ind:
         try:
-            data = [['Hx: ' + Subject.Dx +" XT:"+Subject.XT_PD+" ET:"+Subject.ET_PD+" hyper:"+Subject.HYPER+" hypo:"+Subject.HYPO,'','','','','','','','','',''],
+            data = [['Hx: ' + Subject.Dx,'','','','','','','','','',''],
                     ['',    'VAsc',          'VAcc',        'Auto-Ref',     'pupil',            'WTW',          'AXL',          'Hertel',           '',                 'PD',       'Stereo'],
                     ['OD',  Subject.VA_OD, Subject.BCVA_OD, Subject.Ref_OD,  Subject.pupil_OD,  Subject.WTW_OD, Subject.AL_OD, Subject.Hertal_OD,  Subject.Hertal_Len, Subject.PD, Subject.Stereo],
                     ['OS',  Subject.VA_OS, Subject.BCVA_OS, Subject.Ref_OS,  Subject.pupil_OS,  Subject.WTW_OS, Subject.AL_OS, Subject.Hertal_OS,  '',                 '',         ''],
@@ -132,32 +132,48 @@ def clinic_table(Subject):
     component_table = Table(dis_list,colWidths = colWidths, style=style)    
     return component_table
 def diagnose_table(OLD_ACT_Task):
-    data=[['','','','','',''],
-          ['','','','','',''],
-          ['','',OLD_ACT_Task.NeurobitDx_H,'\n'+str(np.round(OLD_ACT_Task.NeurobitDxDev_H,1))+' PD','',''],
-          ['','',OLD_ACT_Task.NeurobitDx_V,'\n'+str(np.round(OLD_ACT_Task.NeurobitDxDev_V,1))+' PD','',''],
-          ['','','','','',''],
-          ['','','','','','']]   
+# =============================================================================
+#     data=[['','','','','',''],
+#           ['','','','','',''],
+#           ['','',OLD_ACT_Task.NeurobitDx_H,'\n'+str(np.round(OLD_ACT_Task.NeurobitDxDev_H,1))+' PD','',''],
+#           ['','',OLD_ACT_Task.NeurobitDx_V,'\n'+str(np.round(OLD_ACT_Task.NeurobitDxDev_V,1))+' PD','',''],
+#           ['','','','','',''],
+#           ['','','','','','']]   
+#     dis_list = []
+#     for x in data:
+#         dis_list.append(x)
+#     style = [
+#         ('FONTNAME', (0, 0), (-1, -1), 'TSans'),    # 字體
+#         ('FONTSIZE', (0, 0), (-1, -1), 10),          # 字體大小
+#         
+#         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),        # 對齊
+#         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),     # 對齊
+#         
+#         ('BOX', (0, 0), (1, 1), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
+#         ('BOX', (0, 2), (1, 3), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
+#         ('BOX', (0, 4), (1, 5), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
+#         ('BOX', (2, 0), (3, 1), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
+#         ('BOX', (2, 2), (3, 3), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
+#         ('BOX', (2, 4), (3, 5), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
+#         ('BOX', (4, 0), (5, 1), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
+#         ('BOX', (4, 2), (5, 3), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
+#         ('BOX', (4, 4), (5, 5), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
+#     ]    
+# =============================================================================
+    data=[[OLD_ACT_Task.NeurobitDx_H,str(np.round(OLD_ACT_Task.NeurobitDxDev_H,1))+' PD'],
+          [OLD_ACT_Task.NeurobitDx_V,str(np.round(OLD_ACT_Task.NeurobitDxDev_V,1))+' PD']]   
     dis_list = []
     for x in data:
         dis_list.append(x)
     style = [
         ('FONTNAME', (0, 0), (-1, -1), 'TSans'),    # 字體
-        ('FONTSIZE', (0, 0), (-1, -1), 10),          # 字體大小
+        ('FONTSIZE', (0, 0), (-1, -1), 14),          # 字體大小
         
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),        # 對齊
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),     # 對齊
         
-        ('BOX', (0, 0), (1, 1), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
-        ('BOX', (0, 2), (1, 3), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
-        ('BOX', (0, 4), (1, 5), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
-        ('BOX', (2, 0), (3, 1), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
-        ('BOX', (2, 2), (3, 3), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
-        ('BOX', (2, 4), (3, 5), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
-        ('BOX', (4, 0), (5, 1), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
-        ('BOX', (4, 2), (5, 3), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
-        ('BOX', (4, 4), (5, 5), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
-    ]    
+        ('BOX', (0, 0), (-1, -1), 1.5, colors.black),   # 設置表格框線爲grey色，線寬爲1
+    ]
     colWidths = (GAZE_TABLE_WIDTH / len(data[0])) * inch     # 每列的寬度
     component_table = Table(dis_list, 
                             colWidths=colWidths, 
@@ -362,3 +378,68 @@ def Gaze9Report(Element, Gaze9_Session):
     Element.append(tbl)
     return Element     
 
+def Gaze9ACTReport(Element, Gaze9_Session):
+    GAZE_9_STR      = nb.GAZE_9_TIME
+    HEADER = ["9 Gaze Dynamic Eyeposition Tracking (Open)",
+              "9 Gaze Dynamic Eyeposition Tracking (Cover Left)",
+              "9 Gaze Dynamic Eyeposition Tracking (Cover Right)"]
+    
+    sub_head3 = sub_head("Ocular Motility Table")
+    text1 = con_text("9 Gaze Test Sequence")
+    Quality_Bar = quality_bar(Gaze9_Session.OD, Gaze9_Session.OS)
+    
+    
+    im4 = QRCodeImage(Gaze9_Session.saveImage_path+"\\QR_code.png")
+    Dev_H = Gaze9_Session.NeurobitDxDev_H
+    Dev_V = Gaze9_Session.NeurobitDxDev_V
+    
+    for ss in range(0,3):
+        data = [
+            ["9 Gaze",  "OD ("+chr(176)+")",   "",        "OS ("+chr(176)+")",  "",     "OD-OS ("+chr(176)+")",    ""],
+            ["",        "H",        "V",        "H",        "V",    "H",            "V"],
+        ]
+        sub_head2 = sub_head(HEADER[ss])
+        im1 = EyeTrackImage(Gaze9_Session.saveImage_path+"\\DrawEyeTrack_"+nb.ACT_LABEL[ss]+".png")
+        im2 = Gaze9EyeImage(Gaze9_Session.saveImage_path+"\\DrawEyeFig_"+nb.ACT_LABEL[ss]+".png")
+        im3 = Gaze9EyeMesh(Gaze9_Session.saveImage_path+"\\DrawEyeMesh_"+nb.ACT_LABEL[ss]+".png")
+        for t in GAZE_9_STR:
+            Diff_H = Dev_H[t][ss][0]-Dev_H[t][ss][1]
+            Diff_V = Dev_V[t][ss][0]-Dev_V[t][ss][1]
+            data.append([t, Dev_H[t][ss][0], Dev_V[t][ss][0], Dev_H[t][ss][1], Dev_V[t][ss][1], np.round(Diff_H,1), np.round(Diff_V,1)])
+        dis_list = []
+        for x in data:
+            dis_list.append(x)
+        style = [
+            ('FONTNAME', (0, 0), (-1, -1), 'TSans'),    # 字體
+            ('FONTSIZE', (0, 0), (-1, -1), 8),          # 字體大小
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.white),          # 字體顏色
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),          # 字體顏色
+            
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),        # 對齊
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),     # 對齊
+            
+            ('SPAN',(0,0),(0,1)),
+            ('SPAN',(1,0),(2,0)),
+            ('SPAN',(3,0),(4,0)),
+            ('SPAN',(5,0),(6,0)),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),   # 設置表格框線爲grey色，線寬爲0.5
+            
+            ('BACKGROUND', (0, 0), (-1, 0), colors.steelblue),
+            ('BACKGROUND', (0, 0), (0, -1), colors.steelblue),
+            ('BACKGROUND', (1, 1), (-1, 1), colors.powderblue)
+        ]    
+        gaze_table = Table(dis_list, style=style, rowHeights=12, colWidths=6/8.4 *inch) 
+        tbl_data = [
+            [im4, gaze_table]]
+        tbl = Table(tbl_data)
+        
+        Element.append(sub_head2)    
+        Element.append(im1)
+        Element.append(Quality_Bar)
+        Element.append(sub_head3)
+        Element.append(text1)    
+        Element.append(im2) 
+        Element.append(im3)
+        Element.append(tbl)
+        Element.append(PageBreak())
+    return Element     

@@ -211,44 +211,47 @@ class Gaze9_Task(Neurobit):
         Gaze_9_OD = []; Gaze_9_OS = [];       # all position in each ACT_TIME
         NeurobitDxDev_H = list();NeurobitDxDev_V = list()
         for i in range(0,len(nb.GAZE_9_TIME)):
-            if AdjCmdTime[nb.GAZE_9_TIME[i]].any():
-                for j in range(0,len(AdjCmdTime[nb.GAZE_9_TIME[i]])):
-                    T = nb.GAZE_9_TIME[i]
-                    cap = nb.GetVideo(self.csv_path)
-                    cap.set(1,AdjCmdTime[nb.GAZE_9_TIME[i]][j])
-                    ret, im = cap.read()  
-                    if j%2 == 0 and ret:
-                        my_gui = EyeTrackSys(self.csv_path,
-                                             AdjCmdTime[nb.GAZE_9_TIME[i]][j],OD_Gaze9[T][int(j/2)],
-                                             nb.GAZE_9_TIME[i])
-                        my_gui.master.mainloop()
-                        if not np.isnan(my_gui.xy).any():
-                            self.OD[0][my_gui.pic] = my_gui.xy[0][0]
-                            self.OD[1][my_gui.pic] = my_gui.xy[0][1]
-                            OD_Gaze9[T][int(j/2)][0] = my_gui.xy[0][0]
-                            OD_Gaze9[T][int(j/2)][1] = my_gui.xy[0][1]                            
-                            AdjCmdTime[nb.GAZE_9_TIME[i]][j] = my_gui.pic
-                            print(OD_Gaze9[T][int(j/2)][0],OD_Gaze9[T][int(j/2)][1],AdjCmdTime[nb.GAZE_9_TIME[i]][j])
-                    elif j%2 == 1 and ret:
-                        my_gui = EyeTrackSys(self.csv_path,
-                                             AdjCmdTime[nb.GAZE_9_TIME[i]][j],OS_Gaze9[T][int((j-1)/2)],
-                                             nb.GAZE_9_TIME[i])
-                        my_gui.master.mainloop()
-                        if not np.isnan(my_gui.xy).any():
-                            self.OS[0][my_gui.pic] = my_gui.xy[0][0]
-                            self.OS[1][my_gui.pic] = my_gui.xy[0][1]
-                            OS_Gaze9[T][int((j-1)/2)][0] = my_gui.xy[0][0]
-                            OS_Gaze9[T][int((j-1)/2)][1] = my_gui.xy[0][1]
-                            AdjCmdTime[nb.GAZE_9_TIME[i]][j] = my_gui.pic
-                            print(OS_Gaze9[T][int((j-1)/2)][0],OS_Gaze9[T][int((j-1)/2)][1],AdjCmdTime[nb.GAZE_9_TIME[i]][j])
-                if T == 'F':
-                    Gaze_9_OD.append(np.nanpercentile(OD_Gaze9[T],50,axis = 0))
-                    Gaze_9_OS.append(np.nanpercentile(OS_Gaze9[T],50,axis = 0))
-                else:
-                    diff = abs(OD_Gaze9[T][:,0]-Gaze_9_OD[0][0])+abs(OD_Gaze9[T][:,1]-Gaze_9_OD[0][1])
-                    loc = np.where(diff == np.max(diff))[0][0]
-                    Gaze_9_OD.append(OD_Gaze9[T][loc,:])
-                    Gaze_9_OS.append(OS_Gaze9[T][loc,:])
+            T = nb.GAZE_9_TIME[i]
+            if T == 'F':
+                Gaze_9_OD.append(np.nanpercentile(OD_Gaze9[T],50,axis = 0))
+                Gaze_9_OS.append(np.nanpercentile(OS_Gaze9[T],50,axis = 0))
+            else:
+                diff = abs(OD_Gaze9[T][:,0]-Gaze_9_OD[0][0])+abs(OD_Gaze9[T][:,1]-Gaze_9_OD[0][1])
+                loc = np.where(diff == np.max(diff))[0][0]
+                Gaze_9_OD.append(OD_Gaze9[T][loc,:])
+                Gaze_9_OS.append(OS_Gaze9[T][loc,:])
+# =============================================================================
+#             if AdjCmdTime[nb.GAZE_9_TIME[i]].any():
+#                 for j in range(0,len(AdjCmdTime[nb.GAZE_9_TIME[i]])):                    
+#                     cap = nb.GetVideo(self.csv_path)
+#                     cap.set(1,AdjCmdTime[nb.GAZE_9_TIME[i]][j])
+#                     ret, im = cap.read()  
+#                     if j%2 == 0 and ret:
+#                         my_gui = EyeTrackSys(self.csv_path,
+#                                              AdjCmdTime[nb.GAZE_9_TIME[i]][j],OD_Gaze9[T][int(j/2)],
+#                                              nb.GAZE_9_TIME[i])
+#                         my_gui.master.mainloop()
+#                         if not np.isnan(my_gui.xy).any():
+#                             self.OD[0][my_gui.pic] = my_gui.xy[0][0]
+#                             self.OD[1][my_gui.pic] = my_gui.xy[0][1]
+#                             OD_Gaze9[T][int(j/2)][0] = my_gui.xy[0][0]
+#                             OD_Gaze9[T][int(j/2)][1] = my_gui.xy[0][1]                            
+#                             AdjCmdTime[nb.GAZE_9_TIME[i]][j] = my_gui.pic
+#                             print(OD_Gaze9[T][int(j/2)][0],OD_Gaze9[T][int(j/2)][1],AdjCmdTime[nb.GAZE_9_TIME[i]][j])
+#                     elif j%2 == 1 and ret:
+#                         my_gui = EyeTrackSys(self.csv_path,
+#                                              AdjCmdTime[nb.GAZE_9_TIME[i]][j],OS_Gaze9[T][int((j-1)/2)],
+#                                              nb.GAZE_9_TIME[i])
+#                         my_gui.master.mainloop()
+#                         if not np.isnan(my_gui.xy).any():
+#                             self.OS[0][my_gui.pic] = my_gui.xy[0][0]
+#                             self.OS[1][my_gui.pic] = my_gui.xy[0][1]
+#                             OS_Gaze9[T][int((j-1)/2)][0] = my_gui.xy[0][0]
+#                             OS_Gaze9[T][int((j-1)/2)][1] = my_gui.xy[0][1]
+#                             AdjCmdTime[nb.GAZE_9_TIME[i]][j] = my_gui.pic
+#                             print(OS_Gaze9[T][int((j-1)/2)][0],OS_Gaze9[T][int((j-1)/2)][1],AdjCmdTime[nb.GAZE_9_TIME[i]][j])
+# =============================================================================
+                
                                         
         self.Gaze_9_OD = np.array(np.round(Gaze_9_OD,2))
         self.Gaze_9_OS = np.array(np.round(Gaze_9_OS,2))

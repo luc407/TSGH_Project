@@ -13,6 +13,8 @@ import pandas as pd
 import qrcode
 import sqlite3
 import time
+import re
+import sys
 from tqdm import tqdm
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
@@ -47,34 +49,51 @@ GAZE_9_STR      = ["Front",       "Up",    "Down",
                    "Left Up", "Right Down", "Left Down"]
 
 GAZE_9_EYEFIG = np.array([])
-GAZE_9_BOARDER = np.ones(8).astype(int)
+GAZE_9_BOARDER = ['R','RU','U','LU','L','LD','D','RD','R']
+#GAZE_9_BOARDER = np.ones(8).astype(int)
 for T in range(0,len(GAZE_9_TIME)):
     if GAZE_9_TIME[T] == 'F':
         GAZE_9_EYEFIG = np.array([5])
     elif GAZE_9_TIME[T] == 'U':
         GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[2]))
-        GAZE_9_BOARDER[2] = T
+# =============================================================================
+#         GAZE_9_BOARDER[2] = T
+# =============================================================================
     elif GAZE_9_TIME[T] == 'D':
         GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[8]))
-        GAZE_9_BOARDER[6] = T
+# =============================================================================
+#         GAZE_9_BOARDER[6] = T
+# =============================================================================
     elif GAZE_9_TIME[T] == 'R':
         GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[4]))
-        GAZE_9_BOARDER[0] = T
+# =============================================================================
+#         GAZE_9_BOARDER[0] = T
+# =============================================================================
     elif GAZE_9_TIME[T] == 'L':
         GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[6]))
-        GAZE_9_BOARDER[4] = T
+# =============================================================================
+#         GAZE_9_BOARDER[4] = T
+# =============================================================================
     elif GAZE_9_TIME[T] == 'RU':
         GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[1]))
-        GAZE_9_BOARDER[1] = T
+# =============================================================================
+#         GAZE_9_BOARDER[1] = T
+# =============================================================================
     elif GAZE_9_TIME[T] == 'LU':
         GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[3]))
-        GAZE_9_BOARDER[3] = T
+# =============================================================================
+#         GAZE_9_BOARDER[3] = T
+# =============================================================================
     elif GAZE_9_TIME[T] == 'RD':
         GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[7]))
-        GAZE_9_BOARDER[7] = T
+# =============================================================================
+#         GAZE_9_BOARDER[7] = T
+# =============================================================================
     elif GAZE_9_TIME[T] == 'LD':
         GAZE_9_EYEFIG = np.concatenate((GAZE_9_EYEFIG,[9]))
-        GAZE_9_BOARDER[5] = T
+# =============================================================================
+#         GAZE_9_BOARDER[5] = T
+# =============================================================================
 
 # color map
 line_color_palatte = {'greens':["#A5F5B3", "#51F46D",   "#00F62B", "#008D19", "#004D0D"], # pale / mid / base / dark / black              
@@ -83,7 +102,7 @@ line_color_palatte = {'greens':["#A5F5B3", "#51F46D",   "#00F62B", "#008D19", "#
                       'blues':["#A4DCEF", "#54C8EE", "#03B5F0", "#015773", "#012F3F"]}
 
 
-global OD_WTW, OS_WTW, CAL_VAL_OD, CAL_VAL_OS, EYE_ORING
+global OD_WTW, OS_WTW, CAL_VAL_OD, CAL_VAL_OS, EYE_ORING, Release_ver
 OD_WTW = 0; 
 OS_WTW = 0;
 CAL_VAL_OD = 5/33;
@@ -192,6 +211,17 @@ class ACT_Save(object):
           'V_Dev':[],
           }
     
+        
+class CUT_Save(object):
+    _CUT_dx = {'ID':[],
+          'Date':[],
+          'H_Dx':[],
+          'H_Dev':[],
+          'H_type':[],
+          'V_Dx':[],
+          'V_Dev':[],
+          }
+
 class Gaze9_Save(object):
     _Gaze9_dx = {'ID':[],'Date':[]}
     for i in range(0,len(GAZE_9_TIME)):
@@ -202,19 +232,9 @@ class Gaze9_Save(object):
     _Gaze9_dx['OD_Area'] = []
     _Gaze9_dx['OS_Area'] = []
     
-class CUT_Save(object):
-    _CUT_dx = {'ID':[],
-               'Date':[],
-          'H_Dx':[],
-          'H_Dev':[],
-          'H_type':[],
-          'V_Dx':[],
-          'V_Dev':[],
-          }
-    
 class Neurobit():
     def __init__(self):
-        self.version = '2.9'
+        self.version = 'Version2.9_0810'
         self.task = str("Subject")
         self.session = []
         self.major_path = os.getcwd()
@@ -264,6 +284,8 @@ class Neurobit():
             self.VoiceCommand = np.array(cmd_csv.PatientID[tmp:], dtype=float)
         elif self.task == '9_Gaze':
             self.VoiceCommand = np.array([cmd_csv.ExaminerID[tmp:],cmd_csv.Device[tmp:],cmd_csv.PatientID[tmp:]], dtype=float)
+        elif self.task == '9_GazeACT':
+            self.VoiceCommand = np.array([cmd_csv.ExaminerID[tmp:],cmd_csv.Device[tmp:],cmd_csv.PatientID[tmp:]], dtype=float)
         elif self.task == 'CUT':
             self.VoiceCommand = np.array(cmd_csv.PatientID[tmp:], dtype=float)
         else:
@@ -301,7 +323,7 @@ class Neurobit():
             cap.set(1,frame_cnt)
             ret, frame = cap.read()
             if ret == True:
-                frame_cnt+=1                             
+                frame_cnt+=1                          
                 OD_p,OS_p,thr = capture_eye_pupil(frame,eyes)
                 if (not np.isnan(OD_p).any() and 
                     eyes[0][0]<OD_p[0]<eyes[0][0]+eyes[0][2] and 
@@ -371,7 +393,7 @@ class Neurobit():
                 videoList.append(video)
                               
             final_video = concatenate_videoclips(videoList)
-            final_video.write_videofile(os.path.join(self.saveMerge_path,self.FolderName + "_" + self.task + ".mp4"))  
+            final_video.write_videofile(os.path.join(self.saveMerge_path,self.FolderName + "_" + self.task + ".mp4"), fps=25)  
             csv_1.to_csv(os.path.join(self.saveMerge_path,self.FolderName + "_" + self.task + ".csv"))        
             self.csv_path = os.path.join(self.saveMerge_path,self.FolderName + "_" + self.task + ".csv")
             self.FileName = self.csv_path.split('\\')[-1].replace(".csv","")
@@ -414,8 +436,11 @@ class Neurobit():
         except:
             print("No _CUT_dx")
     def Save2Cloud(self):
-        gauth = GoogleAuth()       
-        drive = GoogleDrive(gauth) 
+# =============================================================================
+#         gauth = GoogleAuth()
+#         drive = GoogleDrive(gauth) 
+# =============================================================================
+        drive = self.drive
         upload_file = self.FileName+".mp4"
        	gfile = drive.CreateFile({'parents': [{'id': '1MqwjPygHZFop6PHm88SjlpaL7D_2QX-E'}]})
         # delete exist file
@@ -436,8 +461,11 @@ class Neurobit():
                     NotUpdated = False  
     def DrawQRCode(self):
         os.chdir(self.major_path)
-        gauth = GoogleAuth()       
-        drive = GoogleDrive(gauth) 
+# =============================================================================
+#         gauth = GoogleAuth()       
+#         drive = GoogleDrive(gauth) 
+# =============================================================================
+        drive = self.drive
        	# Read file and set it as the content of this instance.
         file_list = drive.ListFile({'q': "'{}' in parents and trashed=false".format('1MqwjPygHZFop6PHm88SjlpaL7D_2QX-E')}).GetList()
         for file in file_list:
@@ -446,13 +474,15 @@ class Neurobit():
         img = qrcode.make(self.website)
         img.save(os.path.join(self.saveImage_path,"QR_code.png"))
     def Preprocessing(self):
-        plt.subplot(2,2,1)        
-        plt.plot(self.OD[0,:])
-        plt.plot(self.OD[1,:])
-        plt.subplot(2,2,2)
-        plt.plot(self.OS[0,:])
-        plt.plot(self.OS[1,:])
-        plt.show()
+# =============================================================================
+#         plt.subplot(2,2,1)        
+#         plt.plot(self.OD[0,:])
+#         plt.plot(self.OD[1,:])
+#         plt.subplot(2,2,2)
+#         plt.plot(self.OS[0,:])
+#         plt.plot(self.OS[1,:])
+#         plt.show()
+# =============================================================================
         
         win = 15        # window 
 # =============================================================================

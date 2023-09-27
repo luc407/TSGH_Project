@@ -38,8 +38,7 @@ class ACT_Task(Neurobit):
         self.GetEyePosition() 
 # =============================================================================
 #         self.Preprocessing()
-# =============================================================================
-        #self.SeperateSession()              
+# =============================================================================        
         self.FeatureExtraction()  
         self.GetDiagnosis()  
         self.Save2Cloud()
